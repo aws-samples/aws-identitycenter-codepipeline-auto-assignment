@@ -1,0 +1,543 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Cloudformation template creating resources for SSO automation solution.
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+      - 
+        Label: 
+          default: "SSO Configuration"
+        Parameters: 
+          - SSOInstanceARN
+          - IdentityStoreId
+          - SSOAutmationRoleName
+          - SNSEmailEndpointSubscription
+      - 
+        Label: 
+          default: "Other Input Configuration"
+        Parameters:
+          - S3SourceBucketName
+          - GlobalSSOGroupMappingFileName
+          - TargetSSOGroupMappingFileName
+          - AssignmentLambdaZipFileName
+          - PermissionSetsLambdaZipFileName
+
+Parameters:
+  SSOInstanceARN:
+    Type: String
+    Description: SSOInstanceARN can be found on the AWS SSO console 'Settings' page.
+    Default: arn:aws:sso:::instance/ssoins-66849c208eed8e56
+  IdentityStoreId:
+    Type: String
+    Description: Identity Store ID can be found on the AWS SSO console 'Settings' page.
+    Default: d-9a6712bd41
+  GlobalSSOGroupMappingFileName:
+    Description: The Golbal mapping json file name
+    Type: String
+    Default: global-mapping.json
+  TargetSSOGroupMappingFileName:
+    Description: The target mapping json file name
+    Type: String
+    Default: target-mapping.json
+  S3SourceBucketName:
+    Description: the S3 bucket that stores the lambda code as well as permission set and mapping definition. 
+    Type: String
+    Default: sso-s3-iac-bucket
+  AssignmentLambdaZipFileName:
+    Description: Lambda function code that manages SSO account assignments
+    Type: String
+    Default: sso-auto-assign.zip
+  PermissionSetsLambdaZipFileName:
+    Description: Lambda function code that manages SSO permissionsets
+    Type: String
+    Default: sso-auto-permissionsets.zip
+  SSOAutmationRoleName:
+    Type: String 
+    Description: The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) will have permissions to update SSO s3objects and trigger the lambda function.
+    Default: "arn:aws:iam::117323466616:role/CodebuildAdmin"
+  SNSEmailEndpointSubscription:
+    Type: String
+    Default: liuwenxi@amazon.com
+
+Resources:
+#################################################
+#Lambda function(1) that manages SSO permissionsets 
+#################################################
+  SSOPermissionSetAutomationLambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: sso-permissionses-enabler
+      Handler: auto-permissionsets.lambda_handler
+      Code:
+        S3Bucket: !Ref S3SourceBucketName
+        S3Key: !Ref   PermissionSetsLambdaZipFileName
+      Runtime: "python3.9"
+      Environment:
+        Variables:
+          SSO_InstanceArn: !Ref SSOInstanceARN
+          SSO_S3_BucketName: !Ref S3SourceBucketName        
+          SNS_Topic_Name:  'sso-automation-topic'
+          Lambda_Region: !Ref "AWS::Region"
+      MemorySize: 256
+      Timeout: 900
+      Role: !GetAtt
+        - SSOPermissionSetAutomationLambdaRole
+        - Arn
+  SSOPermissionSetAutomationLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: SSOPermissionSetAutomationLambdaRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: SSOPermissionSetAutomationLambdaRolePolicy
+          PolicyDocument:
+            Statement:
+              - Sid: EssentialActions
+                Effect: Allow
+                Action:
+                  - 'sso:*'               
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogGroups'
+                  - 'logs:DescribeLogStreams'
+                  - 'logs:CreateLogDelivery'
+                  - 'logs:DeleteLogDelivery'
+                  - 'ssm:GetParameter'  
+                  - 'codepipeline:PutJobSuccessResult'
+                  - 'codepipeline:PutJobFailureResult'                     
+                Resource: '*'
+              - Sid: S3EssentialObjectActions
+                Effect: Allow
+                Action:
+                  - 's3:GetObject'    
+                  - 's3:PutObject'
+                  - 's3:PutObjectAcl'                  
+                Resource: !Sub 'arn:aws:s3:::${S3SourceBucketName}/*'
+              - Sid: S3EssentialBucketAction
+                Effect: Allow
+                Action:
+                  - 's3:ListBucket'
+                Resource: !Sub 'arn:aws:s3:::${S3SourceBucketName}'
+              - Sid: KMSEssentialActions
+                Effect: Allow
+                Action:
+                  - 'kms:Encrypt'       
+                  - 'kms:Decrypt'               
+                Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*" 
+              - Sid: SNSPublishAction
+                Effect: Allow
+                Action:
+                  - 'sns:Publish'                    
+                Resource: '*'
+
+#  SSOPermissionSetAutomationLambdaLambdaInvoker:
+#    Type: 'Custom::InvokeLambda'
+#    Properties:
+#      ServiceToken: !GetAtt SSOPermissionSetAutomationLambda.Arn
+
+#####################################################
+#Lambda function(2) that manages SSO account assignment 
+#####################################################
+  SSOAssignmentAutomationLambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: sso-auto-assignment-enabler
+      Handler: auto-assignment.lambda_handler
+      Code:
+        S3Bucket: !Ref S3SourceBucketName
+        S3Key: !Ref AssignmentLambdaZipFileName
+      Runtime: "python3.9"
+      Environment:
+        Variables:
+          SSO_InstanceArn: !Ref SSOInstanceARN
+          IdentityStore_Id: !Ref IdentityStoreId
+          SSO_S3_BucketName: !Ref S3SourceBucketName
+          GlobalFileName: !Ref GlobalSSOGroupMappingFileName
+          TargetFileName: !Ref TargetSSOGroupMappingFileName
+          Lambda_Region: !Ref "AWS::Region"
+      MemorySize: 256
+      Timeout: 360
+      Role: !GetAtt
+        - SSOAssignmentAutomationLambdaRole
+        - Arn
+  SSOAssignmentAutomationLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: SSOAssignmentAutomationLambdaRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: SSOAssignmentAutomationLambdaPolicy
+          PolicyDocument:
+            Statement:
+              - Sid: EssentialActions
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogGroups'
+                  - 'logs:DescribeLogStreams'
+                  - 'logs:CreateLogDelivery'
+                  - 'logs:DeleteLogDelivery'
+                  - 'sso:CreateAccountAssignment'
+                  - 'sso:ListPermissionSets'
+                  - 'sso:ListTagsForResource'
+                  - 'sso:DeleteAccountAssignment'
+                  - 'identitystore:ListGroups'
+                  - 'sso:DescribePermissionSet'
+                  - 'sso:UpdateSSOConfiguration'
+                  - 'sso:ListAccountAssignments'
+                  - 'organizations:ListAccounts'
+                  - 'iam:GetSAMLProvider'
+                  - 'iam:ListRolePolicies'
+                  - 'iam:CreateRole'
+                  - 'iam:AttachRolePolicy'
+                  - 'iam:GetRole'
+                  - 'iam:ListAttachedRolePolicies'  
+                  - 'iam:PutRolePolicy'
+                  - 'ssm:GetParameter'    
+                  - 'codepipeline:PutJobSuccessResult'
+                  - 'codepipeline:PutJobFailureResult'
+                Resource: '*'
+              - Sid: S3EssentialActions
+                Effect: Allow
+                Action:
+                  - 's3:GetObject'       
+                  - 's3:PutObject'
+                  - 's3:PutObjectAcl'                  
+                Resource: !Sub 'arn:aws:s3:::${S3SourceBucketName}/*'
+              - Sid: KMSEssentialActions
+                Effect: Allow
+                Action:
+                  - 'kms:Encrypt'       
+                  - 'kms:Decrypt'               
+                Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*" 
+########################################################
+#AWS Event Rules - Trigger Automation by regular actions       
+########################################################
+  SSOCreateEventRuleforOrganization:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Description: Trigger the SSO automation lambda function
+      EventPattern:
+        source:
+          - aws.organizations
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - organizations.amazonaws.com
+          eventName:
+            - CreateAccount
+            - InviteAccountToOrganization
+      Name: TriggerSSOautomationenablerRule
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
+          Id: TargetFunctionSSOPermissionSet
+  # SSOCreateEventRuleforS3:
+  #   Type: 'AWS::Events::Rule'
+  #   Properties:
+  #     Description: Trigger the SSO automation lambda function
+  #     Name: SSOEventRuleofS3Upload
+  #     State: ENABLED
+  #     Targets:
+  #       - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
+  #         Id: TargetFunctionSSOPermissionSet
+  #     EventPattern:
+  #       source:
+  #         - aws.s3
+  #       detail-type:
+  #         - AWS API Call via CloudTrail
+  #       detail:
+  #         eventSource:
+  #           - s3.amazonaws.com
+  #         eventName:
+  #           - PutObject
+  #         requestParameters:
+  #           bucketName:
+  #             - !Ref S3SourceBucketName
+  #           # key:
+  #           #   - !Ref GlobalSSOGroupMappingFileName
+  #           #   - !Ref TargetSSOGroupMappingFileName
+########################################################################
+# AWS Event Rules - Detect manual user interaction with the SSO Service #
+########################################################################
+  SSOManualActionDetectionRule1:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Description: Trigger the SSO automation lambda function when it detects manual user interaction from eventSource sso.amazonaws.com
+      EventPattern:
+        source:
+          - aws.sso
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - sso.amazonaws.com
+          eventName:
+            - AttachManagedPolicyToPermissionSet
+            - AssociateProfile
+            - CreateAccountAssignment
+            - CreateProfile
+            - CreateInstanceAccessControlAttributeConfiguration
+            - CreatePermissionSet
+            - DeleteAccountAssignment
+            - DeleteInlinePolicyFromPermissionSet
+            - DeleteInstanceAccessControlAttributeConfiguration
+            - DeletePermissionSet
+            - DeletePermissionsPolicy
+            - DetachManagedPolicyFromPermissionSet
+            - ProvisionPermissionSet
+            - PutInlinePolicyToPermissionSet
+            - PutPermissionsPolicy
+            - UpdatePermissionSet
+            - UpdateProfile
+            - UpdateSSOConfiguration
+            - TagResource
+            - UntagResource
+          userIdentity:
+            sessionContext:
+              sessionIssuer:
+                userName:
+                  - anything-but: 
+                      - !Ref SSOAutmationRoleName
+                      - SSOAssignmentAutomationLambdaRole
+                      - SSOPermissionSetAutomationLambdaRole
+      Name: SSOManualActionDetectionRule1
+      State: ENABLED
+      Targets: 
+        - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
+          Id: TargetFunctionPermissionSetAutomation
+        - Arn: !GetAtt SSOAlertSNSNotificationLambda.Arn
+          Id: TargetFunctionSSN
+
+  SSOManualActionDetectionRule2:              # Detect manual user interaction from eventSource sso-directory.amazonaws.com
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Description: Trigger the SSO automation lambda function when it detects manual user interaction from eventSource sso-directory.amazonaws.com
+      EventPattern:
+        source:
+          - aws.sso-directory
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - sso-directory.amazonaws.com
+          eventName:                            
+            - AddMemberToGroup
+            - CompleteVirtualMfaDeviceRegistration
+            - CompleteWebAuthnDeviceRegistration
+            - CreateAlias
+            - CreateBearerToken
+            - CreateExternalIdPConfigurationForDirectory
+            - CreateGroup
+            - CreateProvisioningTenant
+            - CreateUser
+            - DeleteBearerToken
+            - DeleteExternalIdPCertificate
+            - DeleteExternalIdPConfigurationForDirectory
+            - DeleteGroup
+            - DeleteMfaDeviceForUser
+            - DeleteProvisioningTenant
+            - DeleteUser
+            - DisableExternalIdPConfigurationForDirectory
+            - DisableUser
+            - EnableExternalIdPConfigurationForDirectory
+            - EnableUser
+            - ImportExternalIdPCertificate
+            - RemoveMemberFromGroup
+            - StartVirtualMfaDeviceRegistration
+            - StartWebAuthnDeviceRegistration
+            - UpdateExternalIdPConfigurationForDirectory
+            - UpdateGroup
+            - UpdateGroupDisplayName
+            - UpdateMfaDeviceForUser
+            - UpdatePassword
+            - UpdateUser
+            - UpdateUserName
+            - VerifyEmail
+          userIdentity:
+            sessionContext:
+              sessionIssuer:
+                userName:
+                  - anything-but: 
+                      - !Ref SSOAutmationRoleName
+                      - SSOAssignmentAutomationLambdaRole
+                      - SSOPermissionSetAutomationLambdaRole        
+      Name: SSOManualActionDetectionRule2
+      State: ENABLED
+      Targets: 
+        - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
+          Id: TargetFunctionPermissionSetAutomation
+        - Arn: !GetAtt SSOAlertSNSNotificationLambda.Arn
+          Id: TargetFunctionSSN
+  
+  SSOScheduledRuleBaselining:
+    Type: AWS::Events::Rule
+    Properties:
+      Description:  Schedule CloudWatch event rule (re-baselining) for the SSO lambda function (every 12 hour by default)
+      ScheduleExpression: rate(12 hours)
+      State: "ENABLED"
+      Targets:
+        - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
+          Id: "Every12Hours"
+
+
+  SNSSSOManualActionAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: SSO-Manual-Modification-Detection-Alert
+      TopicName: SSO-Manual-Modification-Detection-Alert
+      Subscription:
+        - Endpoint: !Ref SNSEmailEndpointSubscription
+          Protocol: email-json
+
+#####################################################
+## Lambda function(3) to customize SNS Email Subject#
+#####################################################
+  SSOAlertSNSNotificationLambda:                 
+    Type: 'AWS::Lambda::Function'
+    #DependsOn: SSOAssignmentAutomationLambdaInvoker
+    Properties:
+      FunctionName: sso-alert-SNSnotification
+      Handler: index.lambda_handler
+      Role: !GetAtt  SSOAlertSNSNotificationRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          import json
+          sns_client = boto3.client("sns")
+          sns_arn= os.environ.get("SNSTopic_ARN")
+          sns_email_subject="AWS SSO Manual Modification"
+
+          def lambda_handler(event, context):
+            print(event)
+            try:
+              if event['detail']['eventName']:
+                resp = sns_client.publish(TargetArn=sns_arn, Message=json.dumps(event).replace('"',''), Subject=sns_email_subject+" - "+event['detail']['eventName'])
+              else:
+                resp = sns_client.publish(TargetArn=sns_arn, Message=json.dumps(event).replace('"',''), Subject=sns_email_subject+" - Unknown")
+              print(resp)
+              print("Info.Execution completed correctly.")
+            except Exception as ex:
+              print(ex)
+              print("Error.Execution completed incorrectly")
+            return {'statusCode': 200,'body': json.dumps('successfully executed lambda')}        
+      Runtime: "python3.9"
+      Environment:
+        Variables:
+          SNSTopic_ARN: !Ref SNSSSOManualActionAlertTopic
+      MemorySize: 128
+      Timeout: 120
+
+  SSOAlertSNSNotificationRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: SSOAlertSNSNotificationRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: SSOAssignmentAutomationLambdaPolicy
+          PolicyDocument:
+            Statement:
+              - Sid: EssentialActions
+                Effect: Allow
+                Action:
+                  - 'sns:Publish'                          
+                Resource: !Ref SNSSSOManualActionAlertTopic
+              - Sid: CloudWatchLog
+                Effect: Allow
+                Action:   
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogGroups'
+                  - 'logs:DescribeLogStreams'
+                  - 'logs:CreateLogDelivery'
+                  - 'logs:DeleteLogDelivery'            
+                Resource: "*"
+#  Add Lambda permission to AWS event rules
+  LambdaResourcePermissionForAutoPermissionSetEvent:
+    Type: 'AWS::Lambda::Permission'
+    DependsOn: SSOAlertSNSNotificationLambda
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !GetAtt SSOPermissionSetAutomationLambda.Arn
+      Principal: events.amazonaws.com
+  LambdaResourcePermissionForAutoassignEvent:
+    Type: 'AWS::Lambda::Permission'
+    DependsOn: SSOAlertSNSNotificationLambda
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !GetAtt SSOAssignmentAutomationLambda.Arn
+      Principal: events.amazonaws.com
+  LambdaResourcePermissionForSNSEvent:
+    Type: 'AWS::Lambda::Permission'
+    DependsOn: LambdaResourcePermissionForAutoassignEvent
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !GetAtt SSOAlertSNSNotificationLambda.Arn
+      Principal: events.amazonaws.com
+
+##############################################################################
+# SNS topic that used by permissionset lambda(1) to invoke sso assign lambda #
+##############################################################################
+  SNSInvokeLambdaTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: sso-automation-topic
+      TopicName: sso-automation-topic
+  SNSInvokeLambdaTopicPolicy: 
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref SNSInvokeLambdaTopic
+      PolicyDocument:
+        Statement:
+          - Sid: AWSSNSPolicy
+            Action:
+              - sns:Publish
+            Effect: Allow
+            Resource: !Ref SNSInvokeLambdaTopic
+            Principal:
+              AWS: 
+               - !GetAtt SSOPermissionSetAutomationLambdaRole.Arn
+  rOrgGetAccountsLambdaSubscription: 
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !GetAtt SSOAssignmentAutomationLambda.Arn
+      Protocol: lambda
+      TopicArn: !Ref SNSInvokeLambdaTopic
+
+  rOrgGetAccountsLambdaPermission: 
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref SNSInvokeLambdaTopic
+      FunctionName: !GetAtt SSOAssignmentAutomationLambda.Arn
