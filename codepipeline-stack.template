@@ -1,0 +1,285 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates a Project Pipeline for the different Branches
+Parameters:
+  RepositoryName:
+    Type: String
+    Default: sso-automation-sample-code-repo
+  RepoBranch:
+    Type: String
+    Default: "main"
+  ArtifactBucketName:
+    Type: String
+    Default: sso-pipeline-artifact-bucket
+  SSOEnablerFunctionName:
+    Type: String
+    Default: sso-permissionses-enabler
+Resources:
+#####################
+# Artifact S3 Bucket#
+#####################
+  PipelineArtifactStoreBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Sub "${ArtifactBucketName}-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls : true
+        BlockPublicPolicy : true
+        IgnorePublicAcls : true
+        RestrictPublicBuckets : true
+  PipelineArtifactStoreBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref PipelineArtifactStoreBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          # - Sid: DenyUnEncryptedObjectUploads
+          #   Effect: Deny
+          #   Principal: '*'
+          #   Action: 's3:PutObject'
+          #   Resource: !Join 
+          #     - ''
+          #     - - !GetAtt 
+          #         - PipelineArtifactStoreBucket
+          #         - Arn
+          #       - /*
+          #   Condition:
+          #     StringNotEquals:
+          #       's3:x-amz-server-side-encryption': 'aws:kms'
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: !Join 
+              - ''
+              - - !GetAtt 
+                  - PipelineArtifactStoreBucket
+                  - Arn
+                - /*
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+################
+# CodePipeline #
+################
+  AWSCodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Location: !Ref PipelineArtifactStoreBucket
+        Type: "S3"
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      Name: SSO-Automation-Sample-Solution
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: App
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: '1'
+                Provider: CodeCommit
+              Configuration:
+                RepositoryName: !Ref RepositoryName
+                BranchName: !Ref RepoBranch
+              OutputArtifacts:
+                - Name: SourceArtifacts
+              RunOrder: 1
+        - Name: ProvisionS3Bucket
+          Actions:
+            - Name: Build_S3_Template
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: '1'
+                Provider: CloudFormation
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                StackName: SSO-Create-Secure-S3-Bucket
+                Capabilities: CAPABILITY_IAM
+                TemplatePath: SourceArtifacts::sso-s3-bucket.template  #Match the template name in the repository
+                RoleArn: !GetAtt CodePipelineServiceRole.Arn
+              InputArtifacts:
+                - Name: SourceArtifacts
+              RunOrder: 1
+              RoleArn: !GetAtt CodePipelineServiceRole.Arn
+            - Name: CreateLambdaZipCode
+              InputArtifacts:
+                - Name: SourceArtifacts
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              Configuration:
+                ProjectName: CodeBuildProjectS3Upload
+              RunOrder: 2
+              RoleArn: !GetAtt CodePipelineServiceRole.Arn
+        - Name: BuildSSOTemplate
+          Actions:
+            - Name: BuildSSOTemplate
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: '1'
+                Provider: CloudFormation
+              InputArtifacts:
+                - Name: SourceArtifacts
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                StackName: SSO-Automation-Sample
+                Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
+                TemplatePath: SourceArtifacts::sso-automation.template
+                RoleArn: !GetAtt CodePipelineServiceRole.Arn
+              RunOrder: 1
+              RoleArn: !GetAtt CodePipelineServiceRole.Arn
+            - Name: SyncMappingFiles
+              InputArtifacts:
+                - Name: SourceArtifacts
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              Configuration:
+                ProjectName: UploadMappingFiles
+              RunOrder: 2
+              RoleArn: !GetAtt CodePipelineServiceRole.Arn
+        - Name: ReviewAndExecute
+          Actions:
+            - Name: Approval
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: '1'
+                Provider: Manual
+              Configuration:
+                CustomData: 'Please check the S3 Objects before triggering the deployment'
+              RunOrder: 1
+              RoleArn: !GetAtt CodePipelineServiceRole.Arn
+            - Name: TriggerLambdaAutomation
+              ActionTypeId:
+                Category: Invoke
+                Owner: AWS
+                Provider: Lambda
+                Version: "1"
+              Configuration:
+                FunctionName: !Ref SSOEnablerFunctionName
+              RunOrder: 2
+              RoleArn: !GetAtt CodePipelineServiceRole.Arn
+
+  CodePipelineServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: SSOSamplePipelineRole
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: ['sts:AssumeRole']
+          Effect: Allow
+          Principal:
+            Service: [codebuild.amazonaws.com,cloudformation.amazonaws.com]
+        Version: '2012-10-17'
+      Path: /
+      Policies:
+        - PolicyName: Pipeline-Service-Policy-Example
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'codecommit:CancelUploadArchive'
+                  - 'codecommit:GetBranch'
+                  - 'codecommit:GetCommit'
+                  - 'codecommit:GetUploadArchiveStatus'
+                  - 'codecommit:UploadArchive'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'codedeploy:CreateDeployment'
+                  - 'codedeploy:GetApplicationRevision'
+                  - 'codedeploy:GetDeployment'
+                  - 'codedeploy:GetDeploymentConfig'
+                  - 'codedeploy:RegisterApplicationRevision'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'codebuild:BatchGetBuilds'
+                  - 'codebuild:StartBuild'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:ListFunctions'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'cloudwatch:*'
+                  - 's3:*'
+                  - 'sns:*'
+                  - 'cloudformation:*'
+                Resource: '*'
+
+##build project
+  CodeBuildProjectS3Upload:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: BuildandUploadLambdaFiles
+      Description: Compress Lambda python scripts and sync the zip files to SSO secure S3 bucket.
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: no_artifacts
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:5.0         
+      Source:
+        Type: CODECOMMIT
+        Location: !Sub "https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${RepositoryName}"
+        BuildSpec: buildspec_zipfiles.yml
+      SourceVersion: !Sub "refs/heads/${RepoBranch}"
+      TimeoutInMinutes: 10
+  UploadMappingFiles:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: UploadMappingFilestoS3
+      Description: The Lambda functions are ready. This will sync the latest SSO mapping defination files to s3.
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: no_artifacts
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:5.0         
+      Source:
+        Type: CODECOMMIT
+        Location: !Sub "https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${RepositoryName}"
+        BuildSpec: buildspec_mapping.yml
+      SourceVersion: !Sub "refs/heads/${RepoBranch}"
+      TimeoutInMinutes: 10
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: ['sts:AssumeRole']
+          Effect: Allow
+          Principal:
+            Service: [codebuild.amazonaws.com,cloudformation.amazonaws.com]
+        Version: '2012-10-17'
+      Path: /
+      Policies:
+        - PolicyName: CodeBuildAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'cloudwatch:*'
+                  - 'sns:*'
+                  - 's3:*'
+                Resource: '*'

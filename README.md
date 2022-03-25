@@ -6,7 +6,7 @@ AWS Single Sign-On (SSO) adds new account assignment APIs and AWS CloudFormation
 
 AWS SSO requires the [AWS Organizations service](https://console.aws.amazon.com/organizations) enabled in your AWS account.
 
-## What this solution is (IaC Checkride)
+## What this solution is
  - All the Source code is stored in AWS CodeCommit
  - Use AWS CodePipeline to provision and manage CloudFormation stacks the associated Resources such as CloudWatch Event
     - The AWS CodePipeline first deploy CloudFormation stacks using the templates in CodeCommit Repo
@@ -63,7 +63,7 @@ For example: The folder and files that will be uploaded/stored in your SSO s3 bu
 
 ### Architecture Diagram
   
-  ![Image of sso_Diagram](Diagram/SSO_Diagram.png)
+  ![Image of sso_Diagram](diagram/architecture.png)
 
 ### This solution covers following scenarios:
 - If any change had been made through other approach without updating JSON mapping files in the source, such as a bitbucket, will this solution be able to detect and fix those drifts? 

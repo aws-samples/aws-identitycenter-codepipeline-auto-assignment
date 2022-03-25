@@ -4,7 +4,7 @@ Parameters:
   BucketName:
     Type: String
     Description: S3 bucket name in lower case.
-    Default: sso-s3-iac-bucket
+    Default: sso-s3-automation-sample-bucket
   OrganizationId:
     Type: String
     Description: AWS Organizations ID
@@ -31,7 +31,7 @@ Resources:
     Type: AWS::S3::Bucket
     DeletionPolicy: Delete
     Properties:
-      BucketName: !Sub ${BucketName}
+      BucketName: !Sub "${BucketName}-${AWS::AccountId}" # Use this bucket name to update the s3 sync command in buildspec_zipfiles.yml file
       VersioningConfiguration: 
         Status: Enabled
       BucketEncryption:

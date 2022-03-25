@@ -1,0 +1,19 @@
+version: 0.2
+
+env:
+  git-credential-helper: yes
+phases:
+  build:
+    commands:
+      - echo "Sync  lambda code to S3 bucket"
+      - pwd
+      - ls -lah
+      #Build Lambda Zip file with no folder structure
+      - zip -j sso-auto-assign.zip lambda_code/sso-auto-assign/*.py
+      - zip -j sso-auto-permissionsets.zip lambda_code/sso-auto-permissionsets/*.py  
+      - ls -lah
+      #Upload lambda zip code using aws sync. The bucket name is defined in sso-s3-bucket.template
+      - aws s3 sync .  s3://<replace_with_your_s3_bucketname>/  --exclude "*" --include "sso-auto-assign.zip"
+      - aws s3 sync .  s3://<replace_with_your_s3_bucketname>/  --exclude "*" --include "sso-auto-permissionsets.zip"
+      - aws s3api list-objects-v2 --bucket <replace_with_your_s3_bucketname>
+      - echo "Done"

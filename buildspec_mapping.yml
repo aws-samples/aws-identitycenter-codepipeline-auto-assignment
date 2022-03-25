@@ -1,0 +1,14 @@
+version: 0.2
+
+env:
+  git-credential-helper: yes
+phases:
+  build:
+    commands:
+      - echo "Sync mapping files to S3 bucket"
+      - pwd
+      - ls -lah
+      - git log | head -10
+      - aws s3 sync --delete  mapping_example/ s3://sso-s3-iac-bucket/
+      - aws s3api list-objects-v2 --bucket sso-s3-iac-bucket
+      - echo "Done"
