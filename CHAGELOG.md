@@ -1,3 +1,7 @@
+# Discision log 
+- CodePipeline will use AWS Code commit as the source for now.
+
+
 # CHANGELOG
 
 ## March 20 v1.0.2

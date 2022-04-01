@@ -99,6 +99,7 @@ Resources:
                 StackName: SSO-Create-Secure-S3-Bucket
                 Capabilities: CAPABILITY_IAM
                 TemplatePath: 'SourceArtifacts::sso-s3-bucket.template'
+                RoleArn: !GetAtt CodeBuildRole.Arn
               InputArtifacts:
                 - Name: SourceArtifacts
               RunOrder: 1
@@ -128,6 +129,7 @@ Resources:
                 StackName: SSO-Automation-Sample
                 Capabilities: 'CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND'
                 TemplatePath: 'SourceArtifacts::sso-automation.template'
+                RoleArn: !GetAtt CodeBuildRole.Arn
               RunOrder: 1
             - Name: SyncMappingFiles
               InputArtifacts:
