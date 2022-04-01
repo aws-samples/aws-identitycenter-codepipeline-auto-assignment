@@ -17,6 +17,7 @@ Parameters:
 Resources:
   PipelineArtifactStoreBucket:
     Type: 'AWS::S3::Bucket'
+    DeletionPolicy: Delete
     Properties:
       BucketName: !Sub '${ArtifactBucketName}-${AWS::AccountId}'
       PublicAccessBlockConfiguration:
@@ -44,6 +45,24 @@ Resources:
             Condition:
               Bool:
                 'aws:SecureTransport': false
+          - Sid: DenyOther
+            Effect: Deny
+            Principal: '*'
+            Action: 
+             - "s3:PutObject"
+             - "s3:GetObject"
+             - "s3:GetObjectVersion"
+            Resource: !Join 
+              - ''
+              - - !GetAtt 
+                  - PipelineArtifactStoreBucket
+                  - Arn
+                - /*
+            Condition:
+              StringNotEquals:
+                'aws:PrincipalArn': 
+                  - !GetAtt CodePipelineServiceRole.Arn
+                  - !GetAtt CodeBuildRole.Arn
   AWSCodePipeline:
     Type: 'AWS::CodePipeline::Pipeline'
     Properties:
