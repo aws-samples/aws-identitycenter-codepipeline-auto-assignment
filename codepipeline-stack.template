@@ -284,4 +284,5 @@ Resources:
                   - 'cloudwatch:*'
                   - 'sns:*'
                   - 's3:*'
+                  - 'kms:*'
                 Resource: '*'
