@@ -25,29 +25,29 @@ Parameters:
   SSOInstanceARN:
     Type: String
     Description: SSOInstanceARN can be found on the AWS SSO console 'Settings' page.
-    Default: arn:aws:sso:::instance/ssoins-66849c208eed8e56
+    Default: <replace_with_your_value>
   IdentityStoreId:
     Type: String
     Description: Identity Store ID can be found on the AWS SSO console 'Settings' page.
-    Default: d-9a6712bd41
+    Default: <replace_with_your_value>
   GlobalSSOGroupMappingFileName:
-    Description: The Golbal mapping json file name
+    Description: The Golbal mapping json file name. You can use the default value.
     Type: String
     Default: global-mapping.json
   TargetSSOGroupMappingFileName:
-    Description: The target mapping json file name
+    Description: The target mapping json file name. You can use the default value. 
     Type: String
     Default: target-mapping.json
   S3SourceBucketName:
-    Description: the S3 bucket that stores the lambda code as well as permission set and mapping definition. 
+    Description: the S3 bucket that stores the lambda code as well as permission set and mapping definition. You can use the same bucket name that defined in sso-s3-bucket.template.
     Type: String
-    Default: sso-s3-iac-bucket
+    Default:  sso-s3-automation-sample-bucket
   AssignmentLambdaZipFileName:
-    Description: Lambda function code that manages SSO account assignments
+    Description: Lambda function code that manages SSO account assignments. You can use the default value.
     Type: String
     Default: sso-auto-assign.zip
   PermissionSetsLambdaZipFileName:
-    Description: Lambda function code that manages SSO permissionsets
+    Description: Lambda function code that manages SSO permissionsets. You can use the default value.
     Type: String
     Default: sso-auto-permissionsets.zip
   SSOAutmationRoleName:
@@ -56,7 +56,7 @@ Parameters:
     Default: "arn:aws:iam::117323466616:role/CodebuildAdmin"
   SNSEmailEndpointSubscription:
     Type: String
-    Default: liuwenxi@amazon.com
+    Default: <replace_with_your_value>
 
 Resources:
 #################################################
