@@ -263,7 +263,7 @@ Resources:
   CodeBuildRole:
     Type: 'AWS::IAM::Role'
     Properties:
-      RoleName: sso-automation-codebuild-role
+      RoleName: SSOSamplePipelineCodeBuildRole
       AssumeRolePolicyDocument:
         Statement:
           - Action:

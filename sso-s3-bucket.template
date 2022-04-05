@@ -8,15 +8,15 @@ Parameters:
   OrganizationId:
     Type: String
     Description: AWS Organizations ID
-    Default: o-s9upopegkd
+    Default: <replace_with_your_value>
   SSOAutmationAdminArn:
     Type: CommaDelimitedList 
     Description: The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) will have permissions to put and delete the SSO s3objects.
-    Default: "arn:aws:iam::117323466616:role/Admin,arn:aws:iam::117323466616:role/service-role/AWSControlTowerAdmin,arn:aws:iam::117323466616:role/sso-automation-codebuild-role"
+    Default: "arn:aws:iam::<replace_with_your_value>:role/<replace_with_your_value>,arn:aws:iam::<replace_with_your_value>:role/service-role/<replace_with_your_value>,arn:aws:iam::117323466616:role/<replace_with_your_value>"
   SSOKMSAdminArn:
     Type: CommaDelimitedList
     Description: The ARN of IAM role/user which will have permissions to manage the SSO KMS key.
-    Default: "arn:aws:iam::117323466616:role/Admin,arn:aws:iam::117323466616:role/service-role/AWSControlTowerAdmin"
+    Default: "arn:aws:iam::<replace_with_your_value>:role/<replace_with_your_value>,arn:aws:iam::<replace_with_your_value>:role/service-role/<replace_with_your_value>"
   TagKeyName:
     Type: String 
     Description: Tag name value
