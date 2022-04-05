@@ -9,6 +9,6 @@ phases:
       - pwd
       - ls -lah
       - git log | head -10
-      - aws s3 sync --delete  mapping_example/ s3://sso-s3-iac-bucket/
-      - aws s3api list-objects-v2 --bucket sso-s3-iac-bucket
+      - aws s3 sync --delete  mapping_example/ s3://replace_with_your_sso_s3_bucketname/
+      - aws s3api list-objects-v2 --bucket replace_with_your_sso_s3_bucketname
       - echo "Done"

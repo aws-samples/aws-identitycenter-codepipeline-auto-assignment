@@ -112,7 +112,7 @@ Resources:
                 Provider: CodeBuild
                 Version: '1'
               Configuration:
-                ProjectName: CodeBuildProjectS3Upload
+                ProjectName: !Ref CodeBuildProjectS3Upload
               RunOrder: 2
         - Name: BuildSSOTemplate
           Actions:
@@ -140,7 +140,7 @@ Resources:
                 Provider: CodeBuild
                 Version: '1'
               Configuration:
-                ProjectName: UploadMappingFiles
+                ProjectName: !Ref UploadMappingFiles
               RunOrder: 2
         - Name: ReviewAndExecute
           Actions:
@@ -286,4 +286,5 @@ Resources:
                   - 'sns:*'
                   - 's3:*'
                   - 'kms:*'
+                  - 'logs:*'
                 Resource: '*'
