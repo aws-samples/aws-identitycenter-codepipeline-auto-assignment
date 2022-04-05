@@ -12,7 +12,7 @@ Parameters:
   SSOAutmationAdminArn:
     Type: CommaDelimitedList 
     Description: The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) will have permissions to put and delete the SSO s3objects.
-    Default: "arn:aws:iam::117323466616:role/Admin,arn:aws:iam::117323466616:role/service-role/AWSControlTowerAdmin,arn:aws:iam::117323466616:role/CodebuildAdmin"
+    Default: "arn:aws:iam::117323466616:role/Admin,arn:aws:iam::117323466616:role/service-role/AWSControlTowerAdmin,arn:aws:iam::117323466616:role/sso-automation-codebuild-role"
   SSOKMSAdminArn:
     Type: CommaDelimitedList
     Description: The ARN of IAM role/user which will have permissions to manage the SSO KMS key.
@@ -27,7 +27,7 @@ Parameters:
     Default: Test
 
 Resources:
-  rS3Bucket:
+  S3Bucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Delete
     Properties:
@@ -39,7 +39,7 @@ Resources:
           - BucketKeyEnabled: false
             ServerSideEncryptionByDefault: 
               SSEAlgorithm: "aws:kms"
-              KMSMasterKeyID: !GetAtt rS3BucketKMSKey.Arn
+              KMSMasterKeyID: !GetAtt S3BucketKMSKey.Arn
       PublicAccessBlockConfiguration:
         BlockPublicAcls: True
         BlockPublicPolicy: True
@@ -49,7 +49,7 @@ Resources:
         - Key: !Ref TagKeyName
           Value: !Ref TagValue
 
-  rS3BucketPolicy:
+  S3BucketPolicy:
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -57,7 +57,7 @@ Resources:
             reason: "We can allow * for the Principal as we are limiting access to the Org via a Condition."
     Type: AWS::S3::BucketPolicy
     Properties:
-      Bucket: !Ref rS3Bucket
+      Bucket: !Ref S3Bucket
       PolicyDocument:
         Version: 2012-10-17
         Statement:       
@@ -66,8 +66,8 @@ Resources:
             Principal: "*"
             Action: "s3:*"
             Resource: 
-              - !Sub arn:aws:s3:::${rS3Bucket}
-              - !Sub arn:aws:s3:::${rS3Bucket}/*
+              - !Sub arn:aws:s3:::${S3Bucket}
+              - !Sub arn:aws:s3:::${S3Bucket}/*
             Condition:
               StringNotEquals:
                 aws:PrincipalOrgID: !Ref OrganizationId
@@ -75,7 +75,7 @@ Resources:
             Effect: Deny
             Principal: "*"
             Action: "s3:*"
-            Resource: !Sub arn:aws:s3:::${rS3Bucket}/*
+            Resource: !Sub arn:aws:s3:::${S3Bucket}/*
             Condition:
               Bool:
                 "aws:SecureTransport": "false"
@@ -84,7 +84,7 @@ Resources:
               - s3:DeleteBucket
             Effect: Deny
             Resource: 
-              !Sub 'arn:aws:s3:::${rS3Bucket}'
+              !Sub 'arn:aws:s3:::${S3Bucket}'
             Principal: 
               AWS: "*"
           - Sid: OnlyAllowObjectUpdateSSOAutomationRole
@@ -97,7 +97,7 @@ Resources:
             Effect: Deny
             Principal: "*"
             Resource: 
-              !Sub arn:aws:s3:::${rS3Bucket}/*
+              !Sub arn:aws:s3:::${S3Bucket}/*
             Condition:
               ArnNotLike:
                 aws:PrincipalArn: !Ref SSOAutmationAdminArn         
@@ -108,7 +108,7 @@ Resources:
             Effect: Deny
             Principal: "*"
             Resource: 
-              !Sub arn:aws:s3:::${rS3Bucket}
+              !Sub arn:aws:s3:::${S3Bucket}
             Condition:
               ArnNotLike:
                 aws:PrincipalArn: !Ref SSOAutmationAdminArn
@@ -118,13 +118,13 @@ Resources:
             Effect: Deny
             Principal: "*"
             Resource: 
-              - !Sub 'arn:aws:s3:::${rS3Bucket}/*'
+              - !Sub 'arn:aws:s3:::${S3Bucket}/*'
             Condition:
               StringNotLikeIfExists:
                 s3:x-amz-server-side-encryption-aws-kms-key-id: 
-                  - !GetAtt rS3BucketKMSKey.Arn
+                  - !GetAtt S3BucketKMSKey.Arn
 
-  rS3BucketKMSKey:
+  S3BucketKMSKey:
     Type: "AWS::KMS::Key"
     Properties: 
       Description: SSO mapping bucket Server-side encryption KMS Key
@@ -221,8 +221,8 @@ Resources:
         - Key: !Ref TagKeyName
           Value: !Ref TagValue
 
-  rS3globalAssetKMSKeyAlias:
+  S3globalAssetKMSKeyAlias:
     Type: "AWS::KMS::Alias"
     Properties: 
       AliasName:  "alias/sso-mapping-s3-bucket-key"
-      TargetKeyId: !GetAtt  rS3BucketKMSKey.Arn
+      TargetKeyId: !GetAtt  S3BucketKMSKey.Arn
