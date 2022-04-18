@@ -1,0 +1,22 @@
+{
+    "Name": "9-ops-enterprisemonitoring",
+    "Description": "9-ops-enterprisemonitoring",
+    "Tags": [
+        {
+            "Key": "sso-solution",
+            "Value": "test"
+        }
+    ],
+    "ManagedPolicies": [],
+    "InlinePolicies": {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "AllowSecretsManager",
+                "Effect": "Allow",
+                "Action": "secretsmanager:ListSecrets",
+                "Resource": "*"
+            }
+        ]
+    }
+}

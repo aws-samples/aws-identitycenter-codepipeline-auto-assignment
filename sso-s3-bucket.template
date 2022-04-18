@@ -1,30 +1,23 @@
-AWSTemplateFormatVersion: '2010-09-09'
+---
+AWSTemplateFormatVersion: 2010-09-09
 Description: Cloudformation template creating S3 and KMS resources for SSO automation solution. The s3 bucket will be used to store SSO permission sets and assignment mapping files and lambda zip files.
 Parameters:
   BucketName:
     Type: String
-    Description: S3 bucket name in lower case. The value of this parameter will be used in the sso-automation.template as well.
+    Description: S3 bucket name in lower case.
     Default: sso-s3-automation-sample-bucket
   OrganizationId:
     Type: String
     Description: AWS Organizations ID
-    Default: <replace_with_your_value>
+    Default: o-s9upopegkd
   SSOAutmationAdminArn:
     Type: CommaDelimitedList 
     Description: The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) will have permissions to put and delete the SSO s3objects.
-    Default: "arn:aws:iam::<replace_with_your_value>:role/<replace_with_your_value>,arn:aws:iam::<replace_with_your_value>:role/service-role/<replace_with_your_value>,arn:aws:iam::117323466616:role/<replace_with_your_value>"
+    Default: "arn:aws:iam::117323466616:role/Admin,arn:aws:iam::117323466616:role/service-role/AWSControlTowerAdmin,arn:aws:iam::117323466616:role/SSOSamplePipelineCodeBuildRole"
   SSOKMSAdminArn:
     Type: CommaDelimitedList
     Description: The ARN of IAM role/user which will have permissions to manage the SSO KMS key.
-    Default: "arn:aws:iam::<replace_with_your_value>:role/<replace_with_your_value>,arn:aws:iam::<replace_with_your_value>:role/service-role/<replace_with_your_value>"
-  TagKeyName:
-    Type: String 
-    Description: Tag name value
-    Default: Env
-  TagValue:
-    Type: String 
-    Description: Tag key value
-    Default: Test
+    Default: "arn:aws:iam::117323466616:role/Admin,arn:aws:iam::117323466616:role/service-role/AWSControlTowerAdmin,arn:aws:iam::117323466616:role/SSOSamplePipelineCodeBuildRole"
 
 Resources:
   S3Bucket:
@@ -45,9 +38,6 @@ Resources:
         BlockPublicPolicy: True
         IgnorePublicAcls: True
         RestrictPublicBuckets: True
-      Tags:
-        - Key: !Ref TagKeyName
-          Value: !Ref TagValue
 
   S3BucketPolicy:
     Metadata:
@@ -217,9 +207,6 @@ Resources:
               StringEquals:
                 "kms:CallerAccount": !Sub "${AWS::AccountId}"
                 "kms:ViaService": !Sub "cloudformation.${AWS::Region}.amazonaws.com"
-      Tags:
-        - Key: !Ref TagKeyName
-          Value: !Ref TagValue
 
   S3globalAssetKMSKeyAlias:
     Type: "AWS::KMS::Alias"

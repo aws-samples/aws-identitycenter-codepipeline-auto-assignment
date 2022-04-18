@@ -478,7 +478,7 @@ def lambda_handler(event, context):
         try:
             logger.info("The automation process is now started...")
             aws_permission_sets = get_all_permission_sets()
-            logger.info("The aws_permission_sets: {}".format(aws_permission_sets))
+            logger.info("The existing aws_permission_sets: {}".format(aws_permission_sets))
             #Get the  permission set baseline by loading S3 bucket files
             json_files = get_all_json_files(bucket_name)
             sync_json_with_aws(json_files, aws_permission_sets)                      

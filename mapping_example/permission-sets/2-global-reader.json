@@ -1,0 +1,17 @@
+{
+    "Name": "2-global-reader",
+    "Description": "2-global-reader",
+    "Tags": [
+        {
+            "Key": "sso-solution",
+            "Value": "test"
+        }
+    ],
+    "ManagedPolicies": [
+        {
+            "Name": "SecurityAudit",
+            "Arn": "arn:aws:iam::aws:policy/SecurityAudit"
+        }
+    ],
+    "InlinePolicies": []
+}

@@ -1,0 +1,28 @@
+{
+    "Name": "3-global-billing",
+    "Description": "3-global-billing",
+    "Tags": [
+        {
+            "Key": "sso-solution",
+            "Value": "test"
+        }
+    ],
+    "ManagedPolicies": [],
+    "InlinePolicies": {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "BillingReader",
+                "Effect": "Allow",
+                "Action": [
+                    "aws-portal:ViewPaymentMethods",
+                    "aws-portal:ViewAccount",
+                    "aws-portal:ViewBilling",
+                    "aws-portal:ViewUsage",
+                    "budgets:ViewBudget"
+                ],
+                "Resource": "*"
+            }
+        ]
+    }
+}

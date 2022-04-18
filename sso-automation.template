@@ -25,11 +25,11 @@ Parameters:
   SSOInstanceARN:
     Type: String
     Description: SSOInstanceARN can be found on the AWS SSO console 'Settings' page.
-    Default: <replace_with_your_value>
+    Default: arn:aws:sso:::instance/ssoins-66849c208eed8e56
   IdentityStoreId:
     Type: String
     Description: Identity Store ID can be found on the AWS SSO console 'Settings' page.
-    Default: <replace_with_your_value>
+    Default: d-9a6712bd41
   GlobalSSOGroupMappingFileName:
     Description: The Golbal mapping json file name. You can use the default value.
     Type: String
@@ -56,7 +56,7 @@ Parameters:
     Default: "arn:aws:iam::117323466616:role/CodebuildAdmin"
   SNSEmailEndpointSubscription:
     Type: String
-    Default: <replace_with_your_value>
+    Default: liuwenxi@amazon.com
 
 Resources:
 #################################################
@@ -251,143 +251,119 @@ Resources:
       Targets:
         - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
           Id: TargetFunctionSSOPermissionSet
-  # SSOCreateEventRuleforS3:
+
+###########################################################################################################
+# AWS Event Rules - Detect manual user interaction with the SSO Service - Uncomment line 258-366 to enable#
+############################################################################################################
+  # SSOManualActionDetectionRule1:
   #   Type: 'AWS::Events::Rule'
   #   Properties:
-  #     Description: Trigger the SSO automation lambda function
-  #     Name: SSOEventRuleofS3Upload
-  #     State: ENABLED
-  #     Targets:
-  #       - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
-  #         Id: TargetFunctionSSOPermissionSet
+  #     Description: Trigger the SSO automation lambda function when it detects manual user interaction from eventSource sso.amazonaws.com
   #     EventPattern:
   #       source:
-  #         - aws.s3
+  #         - aws.sso
   #       detail-type:
   #         - AWS API Call via CloudTrail
   #       detail:
   #         eventSource:
-  #           - s3.amazonaws.com
+  #           - sso.amazonaws.com
   #         eventName:
-  #           - PutObject
-  #         requestParameters:
-  #           bucketName:
-  #             - !Ref S3SourceBucketName
-  #           # key:
-  #           #   - !Ref GlobalSSOGroupMappingFileName
-  #           #   - !Ref TargetSSOGroupMappingFileName
-########################################################################
-# AWS Event Rules - Detect manual user interaction with the SSO Service #
-########################################################################
-  SSOManualActionDetectionRule1:
-    Type: 'AWS::Events::Rule'
-    Properties:
-      Description: Trigger the SSO automation lambda function when it detects manual user interaction from eventSource sso.amazonaws.com
-      EventPattern:
-        source:
-          - aws.sso
-        detail-type:
-          - AWS API Call via CloudTrail
-        detail:
-          eventSource:
-            - sso.amazonaws.com
-          eventName:
-            - AttachManagedPolicyToPermissionSet
-            - AssociateProfile
-            - CreateAccountAssignment
-            - CreateProfile
-            - CreateInstanceAccessControlAttributeConfiguration
-            - CreatePermissionSet
-            - DeleteAccountAssignment
-            - DeleteInlinePolicyFromPermissionSet
-            - DeleteInstanceAccessControlAttributeConfiguration
-            - DeletePermissionSet
-            - DeletePermissionsPolicy
-            - DetachManagedPolicyFromPermissionSet
-            - ProvisionPermissionSet
-            - PutInlinePolicyToPermissionSet
-            - PutPermissionsPolicy
-            - UpdatePermissionSet
-            - UpdateProfile
-            - UpdateSSOConfiguration
-            - TagResource
-            - UntagResource
-          userIdentity:
-            sessionContext:
-              sessionIssuer:
-                userName:
-                  - anything-but: 
-                      - !Ref SSOAutmationRoleName
-                      - SSOAssignmentAutomationLambdaRole
-                      - SSOPermissionSetAutomationLambdaRole
-      Name: SSOManualActionDetectionRule1
-      State: ENABLED
-      Targets: 
-        - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
-          Id: TargetFunctionPermissionSetAutomation
-        - Arn: !GetAtt SSOAlertSNSNotificationLambda.Arn
-          Id: TargetFunctionSSN
+  #           - AttachManagedPolicyToPermissionSet
+  #           - AssociateProfile
+  #           - CreateAccountAssignment
+  #           - CreateProfile
+  #           - CreateInstanceAccessControlAttributeConfiguration
+  #           - CreatePermissionSet
+  #           - DeleteAccountAssignment
+  #           - DeleteInlinePolicyFromPermissionSet
+  #           - DeleteInstanceAccessControlAttributeConfiguration
+  #           - DeletePermissionSet
+  #           - DeletePermissionsPolicy
+  #           - DetachManagedPolicyFromPermissionSet
+  #           - ProvisionPermissionSet
+  #           - PutInlinePolicyToPermissionSet
+  #           - PutPermissionsPolicy
+  #           - UpdatePermissionSet
+  #           - UpdateProfile
+  #           - UpdateSSOConfiguration
+  #           - TagResource
+  #           - UntagResource
+  #         userIdentity:
+  #           sessionContext:
+  #             sessionIssuer:
+  #               userName:
+  #                 - anything-but: 
+  #                     - !Ref SSOAutmationRoleName
+  #                     - SSOAssignmentAutomationLambdaRole
+  #                     - SSOPermissionSetAutomationLambdaRole
+  #     Name: SSOManualActionDetectionRule1
+  #     State: ENABLED
+  #     Targets: 
+  #       - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
+  #         Id: TargetFunctionPermissionSetAutomation
+  #       - Arn: !GetAtt SSOAlertSNSNotificationLambda.Arn
+  #         Id: TargetFunctionSSN
 
-  SSOManualActionDetectionRule2:              # Detect manual user interaction from eventSource sso-directory.amazonaws.com
-    Type: 'AWS::Events::Rule'
-    Properties:
-      Description: Trigger the SSO automation lambda function when it detects manual user interaction from eventSource sso-directory.amazonaws.com
-      EventPattern:
-        source:
-          - aws.sso-directory
-        detail-type:
-          - AWS API Call via CloudTrail
-        detail:
-          eventSource:
-            - sso-directory.amazonaws.com
-          eventName:                            
-            - AddMemberToGroup
-            - CompleteVirtualMfaDeviceRegistration
-            - CompleteWebAuthnDeviceRegistration
-            - CreateAlias
-            - CreateBearerToken
-            - CreateExternalIdPConfigurationForDirectory
-            - CreateGroup
-            - CreateProvisioningTenant
-            - CreateUser
-            - DeleteBearerToken
-            - DeleteExternalIdPCertificate
-            - DeleteExternalIdPConfigurationForDirectory
-            - DeleteGroup
-            - DeleteMfaDeviceForUser
-            - DeleteProvisioningTenant
-            - DeleteUser
-            - DisableExternalIdPConfigurationForDirectory
-            - DisableUser
-            - EnableExternalIdPConfigurationForDirectory
-            - EnableUser
-            - ImportExternalIdPCertificate
-            - RemoveMemberFromGroup
-            - StartVirtualMfaDeviceRegistration
-            - StartWebAuthnDeviceRegistration
-            - UpdateExternalIdPConfigurationForDirectory
-            - UpdateGroup
-            - UpdateGroupDisplayName
-            - UpdateMfaDeviceForUser
-            - UpdatePassword
-            - UpdateUser
-            - UpdateUserName
-            - VerifyEmail
-          userIdentity:
-            sessionContext:
-              sessionIssuer:
-                userName:
-                  - anything-but: 
-                      - !Ref SSOAutmationRoleName
-                      - SSOAssignmentAutomationLambdaRole
-                      - SSOPermissionSetAutomationLambdaRole        
-      Name: SSOManualActionDetectionRule2
-      State: ENABLED
-      Targets: 
-        - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
-          Id: TargetFunctionPermissionSetAutomation
-        - Arn: !GetAtt SSOAlertSNSNotificationLambda.Arn
-          Id: TargetFunctionSSN
+  # SSOManualActionDetectionRule2:              # Detect manual user interaction from eventSource sso-directory.amazonaws.com
+  #   Type: 'AWS::Events::Rule'
+  #   Properties:
+  #     Description: Trigger the SSO automation lambda function when it detects manual user interaction from eventSource sso-directory.amazonaws.com
+  #     EventPattern:
+  #       source:
+  #         - aws.sso-directory
+  #       detail-type:
+  #         - AWS API Call via CloudTrail
+  #       detail:
+  #         eventSource:
+  #           - sso-directory.amazonaws.com
+  #         eventName:                            
+  #           - AddMemberToGroup
+  #           - CompleteVirtualMfaDeviceRegistration
+  #           - CompleteWebAuthnDeviceRegistration
+  #           - CreateAlias
+  #           - CreateBearerToken
+  #           - CreateExternalIdPConfigurationForDirectory
+  #           - CreateGroup
+  #           - CreateProvisioningTenant
+  #           - CreateUser
+  #           - DeleteBearerToken
+  #           - DeleteExternalIdPCertificate
+  #           - DeleteExternalIdPConfigurationForDirectory
+  #           - DeleteGroup
+  #           - DeleteMfaDeviceForUser
+  #           - DeleteProvisioningTenant
+  #           - DeleteUser
+  #           - DisableExternalIdPConfigurationForDirectory
+  #           - DisableUser
+  #           - EnableExternalIdPConfigurationForDirectory
+  #           - EnableUser
+  #           - ImportExternalIdPCertificate
+  #           - RemoveMemberFromGroup
+  #           - StartVirtualMfaDeviceRegistration
+  #           - StartWebAuthnDeviceRegistration
+  #           - UpdateExternalIdPConfigurationForDirectory
+  #           - UpdateGroup
+  #           - UpdateGroupDisplayName
+  #           - UpdateMfaDeviceForUser
+  #           - UpdatePassword
+  #           - UpdateUser
+  #           - UpdateUserName
+  #           - VerifyEmail
+  #         userIdentity:
+  #           sessionContext:
+  #             sessionIssuer:
+  #               userName:
+  #                 - anything-but: 
+  #                     - !Ref SSOAutmationRoleName
+  #                     - SSOAssignmentAutomationLambdaRole
+  #                     - SSOPermissionSetAutomationLambdaRole        
+  #     Name: SSOManualActionDetectionRule2
+  #     State: ENABLED
+  #     Targets: 
+  #       - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
+  #         Id: TargetFunctionPermissionSetAutomation
+  #       - Arn: !GetAtt SSOAlertSNSNotificationLambda.Arn
+  #         Id: TargetFunctionSSN
   
   SSOScheduledRuleBaselining:
     Type: AWS::Events::Rule
@@ -414,7 +390,6 @@ Resources:
 #####################################################
   SSOAlertSNSNotificationLambda:                 
     Type: 'AWS::Lambda::Function'
-    #DependsOn: SSOAssignmentAutomationLambdaInvoker
     Properties:
       FunctionName: sso-alert-SNSnotification
       Handler: index.lambda_handler

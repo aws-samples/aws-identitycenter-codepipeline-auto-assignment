@@ -1,8 +1,17 @@
 # Discision log 
 - CodePipeline will use AWS Code commit as the source for now.
+- Split the pipeline stack and the pipeline resource itself.
 
 
 # CHANGELOG
+TBD:
+update pipeline IAM role permissions
+create variables for buildspec projects
+
+## April  05 v1.1.0
+    - fixed the kms; logs permission issue for the pipeline code build role
+    - update the parameter annotation for all the templates
+    - fixed the incorrect project name referrence in the codepipeline template
 
 ## March 20 v1.0.2
 - Fixed the assume role issue by removing pipeline role from each build stage

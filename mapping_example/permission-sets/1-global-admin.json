@@ -1,0 +1,17 @@
+{
+    "Name": "1-global-admin",
+    "Description": "1-global-admin",
+    "Tags": [
+        {
+            "Key": "sso-solution",
+            "Value": "test"
+        }
+    ],
+    "ManagedPolicies": [
+        {
+            "Name": "AdministratorAccess",
+            "Arn": "arn:aws:iam::aws:policy/AdministratorAccess"
+        }
+    ],
+    "InlinePolicies": []
+}

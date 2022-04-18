@@ -1,0 +1,24 @@
+{
+    "Name": "8-global-kmsadmin",
+    "Description": "8-global-kmsadmin",
+    "Tags": [
+        {
+            "Key": "sso-solution",
+            "Value": "test"
+        }
+    ],
+    "ManagedPolicies": [],
+    "InlinePolicies": {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "KMSAdmin",
+                "Effect": "Allow",
+                "Action": [
+                    "kms:*"
+                ],
+                "Resource": "*"
+            }
+        ]
+    }
+}

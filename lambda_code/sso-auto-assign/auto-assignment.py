@@ -1,6 +1,5 @@
 from __future__ import print_function
 from cmath import log
-import cfnresponse
 import boto3, glob, json, os, logging
 from botocore.exceptions import ClientError
 from time import sleep
@@ -269,9 +268,6 @@ def get_groupid(GroupDisplayName):
 def lambda_handler(event, context):
     logger.info("{}".format(event))
     try: 
-        if 'RequestType' in event:
-            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
-        else:
             sns_message = event['Records'][0]['Sns']['Message']
             logger.info("Start the Process, pipeline jobid is {}".format(sns_message))
             #Prepare account id 

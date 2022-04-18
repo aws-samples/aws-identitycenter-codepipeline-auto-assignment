@@ -275,6 +275,7 @@ Resources:
                 - cloudformation.amazonaws.com
         Version: 2012-10-17
       Path: /
+      #https://docs.aws.amazon.com/codebuild/latest/userguide/auth-and-access-control-permissions-reference.html
       Policies:
         - PolicyName: CodeBuildAccess
           PolicyDocument:
@@ -287,4 +288,17 @@ Resources:
                   - 's3:*'
                   - 'kms:*'
                   - 'logs:*'
+                  - 'events:*'
+                  - 'iam:GetRole'
+                  - 'iam:CreateRole'
+                  - 'iam:DeleteRolePolicy'
+                  - 'iam:DeleteRole'
+                  - 'iam:PutRolePolicy'
+                  - 'iam:PassRole'
+                  - 'lambda:GetFunction'
+                  - 'lambda:DeleteFunction'
+                  - 'lambda:CreateFunction'
+                  - 'lambda:AddPermission'
+                  - 'lambda:RemovePermission'
+
                 Resource: '*'
