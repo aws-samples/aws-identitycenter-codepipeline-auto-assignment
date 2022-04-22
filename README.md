@@ -52,7 +52,6 @@ AWS SSO requires the [AWS Organizations service](https://console.aws.amazon.com/
 6. The pipeline will automatically create 2 new CloudFormation stacks in your account and upload your SSO permission and mapping files to a centralized S3 bucket.
 7. Manually approve the review stage and once the Pipeline completed, verify the permission sets and account mapping in AWS SSO service console.
 
-Troubleshoot note:
 
 ### Architecture Diagram
   
@@ -228,7 +227,9 @@ Then re-run the pipeline to automatically remove all the SSO assignments.
 Then re-run the pipeline to automatically remove all permission sets.
 3. Delete CloudFormation stack that was created using sso-automation.template
 4. Delete CloudFormation stack that was created using sso-s3-bucke.template
-5. Delete CloudFormation stack that was created using code-pipeline-stack.template  
+5. Delete CloudFormation stack that was created using code-pipeline-stack.template
+The above steps will only remove the resources that provisioned by this solution. You may need to manually remove other permission sets or SSO assigments that are created outside this automation.
+
 ---
 ## License
 (c) 2020 Amazon Web Services, Inc. or its affiliates. All Rights Reserved.
