@@ -25,11 +25,11 @@ Parameters:
   SSOInstanceARN:
     Type: String
     Description: SSOInstanceARN can be found on the AWS SSO console 'Settings' page.
-    Default: arn:aws:sso:::instance/ssoins-66849c208eed8e56
+    Default: <put_your_own_value>
   IdentityStoreId:
     Type: String
     Description: Identity Store ID can be found on the AWS SSO console 'Settings' page.
-    Default: d-9a6712bd41
+    Default: <put_your_own_value>
   GlobalSSOGroupMappingFileName:
     Description: The Golbal mapping json file name. You can use the default value.
     Type: String
@@ -41,7 +41,7 @@ Parameters:
   S3SourceBucketName:
     Description: the S3 bucket that stores the lambda code as well as permission set and mapping definition. You can use the same bucket name that defined in sso-s3-bucket.template.
     Type: String
-    Default:  sso-s3-automation-sample-bucket
+    Default:  <put_your_own_value>
   AssignmentLambdaZipFileName:
     Description: Lambda function code that manages SSO account assignments. You can use the default value.
     Type: String
@@ -52,11 +52,12 @@ Parameters:
     Default: sso-auto-permissionsets.zip
   SSOAutmationRoleName:
     Type: String 
-    Description: The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) will have permissions to update SSO s3objects and trigger the lambda function.
-    Default: "arn:aws:iam::117323466616:role/CodebuildAdmin"
+    Description: The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) will have permissions to update SSO s3objects and trigger the lambda function.For example, "arn:aws:iam::117323466616:role/CodebuildAdmin"
+    Default: <put_your_own_value> 
   SNSEmailEndpointSubscription:
+    Description: The email address that will be used to receive CloudWatch event notification 
     Type: String
-    Default: liuwenxi@amazon.com
+    Default: <put_your_own_value> 
 
 Resources:
 #################################################

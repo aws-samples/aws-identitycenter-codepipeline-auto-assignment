@@ -6,6 +6,8 @@
 # CHANGELOG
 TBD:
 create variables for buildspec projects
+## April  20
+- README updates
 ## April  15
 - update pipline IAM role permission 
 ## April  05 v1.1.0

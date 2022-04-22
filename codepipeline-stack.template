@@ -4,16 +4,20 @@ Description: Creates a Project Pipeline for the different Branches
 Parameters:
   RepositoryName:
     Type: String
+    Description: The CodeCommit repository name.
     Default: sso-automation-sample-code-repo
   RepoBranch:
     Type: String
+    Description: The CodeCommit repository branch name that will trigger the pipeline run.
     Default: main
   ArtifactBucketName:
     Type: String
+    Description: The CodeBuild artifact bucket.
     Default: sso-pipeline-artifact-bucket
   SSOEnablerFunctionName:
     Type: String
     Default: sso-permissionses-enabler
+
 Resources:
   PipelineArtifactStoreBucket:
     Type: 'AWS::S3::Bucket'
@@ -300,5 +304,4 @@ Resources:
                   - 'lambda:CreateFunction'
                   - 'lambda:AddPermission'
                   - 'lambda:RemovePermission'
-
                 Resource: '*'

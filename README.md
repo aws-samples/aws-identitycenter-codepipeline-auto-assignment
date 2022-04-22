@@ -2,72 +2,65 @@
 
 ## Background Information
 
-AWS Single Sign-On (SSO) adds new account assignment APIs and AWS CloudFormation support to automate access across AWS Organizations accounts on Sep 10, 2020. With those available SSO APIs, this solution allows all access provided via the SSO services to be automated via API / CloudFormation templates, and managed as code converting all currently manual activities.
+AWS Single Sign-On (SSO) adds new account assignment APIs and AWS CloudFormation support to automate access across AWS Organizations accounts. With those available SSO APIs, this solution allows all access provided via the SSO services to be automated via API / CloudFormation templates, and managed as code converting all currently manual activities.
 
 AWS SSO requires the [AWS Organizations service](https://console.aws.amazon.com/organizations) enabled in your AWS account.
 
 ## What this solution is
- - All the Source code is stored in AWS CodeCommit
- - Use AWS CodePipeline to provision and manage CloudFormation stacks the associated Resources such as CloudWatch Event
-    - The AWS CodePipeline first deploy CloudFormation stacks using the templates in CodeCommit Repo
+ - Use AWS CodeCommit to securely source control your own SSO code repository,Utilize CodePipeline to create and update CloudFormation stacks of SSO and other AWS services. 
+    - The AWS CodePipeline will first deploy CloudFormation stacks to create a security S3 bucket, automation Lambda functions and other AWS resources.
     - Once the CloudFormation stack is completed, CodePipeline syncs all the mapping files to a Secure S3 bucket
     - Pipeline invokes the Lambda to create SSO resources by referring the JSON file in the s3 bucket.
 ## Solution Instruction
 
-## Prerequiest 
+## Prerequisite 
 1. Make sure [S3 Data event](https://docs.aws.amazon.com/awscloudtrail/latest/userguide/logging-data-events-with-cloudtrail.html) is enabled for SSO source S3 bucket in account's CloudTrail service.
-    - Because this solution uses AWS S3 Object-level API to trigger the lambda automation and this Data events are enabled by default. [Additional charges apply](https://aws.amazon.com/cloudtrail/pricing/)
+    - Because this solution uses AWS S3 Object-level API to trigger the lambda automation and those Data events are enabled by default. [Additional charges apply](https://aws.amazon.com/cloudtrail/pricing/)
     
-### What is included in this Solution
-
-```t
-1. An AWS CloudFormation template "s3bucket.template"  which is used to store permission set files, group mapping file and lambda function zip code. 
-    - The SSO lambda python code is stored in this bucket because other s3 buckets (e.g.shared-services bucket or other add-on buckets) may not exist prior to this SSO solution in the new environment.
-
-2. An AWS service catalog product deploys the AWS resources for SSO permission sets and group assignment tasks.
-    - Lambda functions "sso-permissionses-enabler","sso-automation-enabler", "sso-alert-SNSnotification"
-    - IAM roles for Lambda functions.
-    - AWS Events Rules that trigger lambda based on received AWS APIs 
-    - SNS topics to send out email notifications for manual SSO modification.
-```
-
-### Use on-premises pipeline to sync changes to AWS environment (Optional)
-
-```t
-The following setups are required if you want to use local automation pipeline to sync SSO files to AWS S3:
-
-1. On-premises automation application. We suggusts to use automation pipeline (e.g. Jenkins) to upload lambda zip files and JSON permission_sets and mapping files from on-premises source to the SSO s3 bucket.
-
-2. The IAM Roles or IAM users which allow on-premises automation application to access AWS services and manage the SSO KMS key.
-
-3. A (on-premises ) GitLab, GitHub or Bitbucket directory that contains the permission sets definition files, group mapping information for your organization. Each permission set is designed to have its own definition JSON file so that it can be quickly updated/added/removed without affecting other existing resources.
-
-For example: The folder and files that will be uploaded/stored in your SSO s3 bucket "example-sso-s3-bucket":
-    example-sso-s3-bucket/            
-        - <lambda_file1>.zip
-        - <lambda_file2>.zip                                        
-        - global-mapping.json
-        - target-mapping.json
-        - permission_sets/
-            - permissionset_expample_1.json
-            ...             
-            - permissionset_expample_99.json
-```
 
 ### How to implement this solution in Organization primary account:
-- 1) Manually or use any local automation pipeline (eg: Jenkins pipeline ) to create a s3 bucket for this SSO automation solution (KMS encrypted by default) using sso-s3-bucket.template file. 
-- 2) Permission sets definition JSON files and mapping definition files are created and uploaded to a source code repository (e.g.GitLab or Bitbucket). You can create those mapping files manually or use the gernerate-sso-mapping.py helper script to convert your existing permission sets and assignments to mapping files.
-- 3) Manually or use any automation pipeline to upload files (lambda zip files, global and target mapping files and 'permission_sets' folder) from source code repository or local storage to the SSO S3 bucket.
-- 4) Provision sso-automation.template via AWS Service Catalog. Alternatively your can directly provision the template using CloudFormation service.
-- 5) Test the automation solution and review the Lambda cloudwatch log for further debugging information.
+
+1. In your AWS Organization primary account, use the codepipeline-stack.template cloudformation template to provision the AWS Code Pipeline and related CICD resources in the same region that SSO service is enabled. Modify the CloudFormation template based on your accounts' information.
+2. Create an AWS CodeCommit repository and make sure the name of CodeCommit repository matches the value of "RepositoryName" parameter in your codepipeline-stack.template.
+3. Verify and Update the parameter in "sso-automation.template" and "sso-s3-bucket.template"
+4. Create your own "global-mapping.json", "target-mapping.json" and permission sets JSON files.
+5. Push the following files to your CodeCommit repository:
+```
+├── LICENSE
+├── README.md
+├── buildspec_mapping.yml
+├── buildspec_zipfiles.yml
+├── codepipeline-stack.template
+├── lambda_code/
+│   ├── sso-auto-assign
+│   │   ├── auto-assignment.py
+│   │   └── cfnresponse.py
+│   └── sso-auto-permissionsets
+│       ├── auto-permissionsets.py
+│       └── cfnresponse.py
+├── sso-automation.template
+├── sso-s3-bucket.template
+└── sso_mapping_info/
+    ├── global-mapping.json
+    └── target-mapping.json
+    └── permission-sets/
+        ├── example-1.json
+        └── example-2.json
+        └── ...example-99.json
+
+```
+6. The pipeline will automatically create 2 new CloudFormation stacks in your account and upload your SSO permission and mapping files to a centralized S3 bucket.
+7. Manually approve the review stage and once the Pipeline completed, verify the permission sets and account mapping in AWS SSO service console.
+
+Troubleshoot note:
 
 ### Architecture Diagram
   
-  ![Image of sso_Diagram](diagram/architecture.png)
+  ![Image of SSO_Solution_Diagram](diagram/architecture.png)
 
-### This solution covers following scenarios:
-- If any change had been made through other approach without updating JSON mapping files in the source, such as a bitbucket, will this solution be able to detect and fix those drifts? 
-    -   A: Yes. The automation will use the mapping definitions (synchronized from bitbucket repository) as the single source of truth(SSOT). When the lambda automation function runs, it compares the information in loaded mapping definitions and assignments in current environment. So it's able to find and address the drifts by re-provisioning the missing assignments and removing the additional assignments from AWS SSO service.
+### This solution covers the following scenarios:
+- If any change had been made through another approach without updating JSON mapping files in the source, such as a bitbucket, will this solution be able to detect and fix those drifts? 
+    -   A: Yes. The automation will use the mapping definitions (synchronized from bitbucket repository) as the single source of truth(SSOT). When the lambda automation function runs, it compares the information in loaded mapping definitions and assignments in the current environment. So it's able to find and address the drifts by re-provisioning the missing assignments and removing the additional assignments from AWS SSO service.
 
     The following s3 bucket policy will block all PutObject/DeleteObject actions to this SSO s3 bucket, Except the privileged sso automation role. This ensures no one other than privileged automation pipeline role is able to change the content of the mapping definition file in s3 bucket. 
 ```
@@ -101,28 +94,28 @@ For example: The folder and files that will be uploaded/stored in your SSO s3 bu
                   - !Ref pJenksinIamARN
                   - !Sub 'arn:aws:iam::${AWS::AccountId}:role/AWSCloudFormationStackSetExecutionRole'
 ```
-### Detect the manual modifications to the SSO serivce to trigger immediate baseline actions.
-- Added 2 AWS event rules in the Service Catalog produt templates:
+### (Optional) Detect the manual modifications to the SSO service to trigger immediate baseline actions.
+- There are 2 optional AWS event rules in the sso-automation.template:
 
     - SSOManualActionDetectionRule1
       - Monitor the APIs from source 'sso.amazonaws.com'
     - SSOManualActionDetectionRule2
       - Monitor the APIs from source 'sso-directory.amazonaws.com'
 
-These 2 event rules will trigger the SSO lambda function when AWS detects manual write changes to SSO Service. Those AWS events will also trigger lambda function to send out Email notification to administrators via SNS serivce. 
+These 2 event rules will trigger the SSO lambda function when AWS detects manual write changes to SSO Service. Those AWS events will also trigger the lambda function to send out Email notification to administrators via SNS service. 
 
 ### An existing permission set needs to be updated in all accounts it is mapped to.
 
-- This Service Catalog Lambda function will make "ProvisionPermissionSet" SSO API call to update assignment status after it detects any updates to the existing permission sets.
+- The sso-auto-permissionsets Lambda function will make "ProvisionPermissionSet" SSO API call to update assignment status after it detects any updates to the existing permission sets.
 
 ### An existing permission set is deleted
--  This solution will detach the permission set from all mapped account before deleting.
+-  This solution will detach the permission set from all mapped accounts before deleting.
 
 ### When a new AWS account is created, or an existing AWS account is invited to the current organization.
-- This solution detects the API calls "CreateAccount" and "InviteAccountToOrganization" and use them to trigger the SSO group assignment tasks.
+- This solution detects the API calls "CreateAccount" and "InviteAccountToOrganization" and uses them to trigger the SSO group assignment tasks.
 
-### A single AD group needs permission set A for account 1, and permission set B for account 2.
--  The solution covers this usecase. For example, we can add following content to "target-mapping-definition.json" file, so that lambda function will perform 2 separate assignments so we can attach this SSO group to account 111111111111 and 111111111111 with permission set A and attach the same SSO group to account 888888888888 and 999999999999 with permission set B: 
+### A single AD or SSO group needs permission set A for account 1, and permission set B for account 2.
+-  The solution covers this use case. For example, we can add following content to "target-mapping-definition.json" file, so that lambda function will perform 2 separate assignments so we can attach this SSO group to account 111111111111 and 123456789012 with permission set A and attach the same SSO group to account 888888888888 and 999999999999 with permission set B: 
   ```
 
     [
@@ -132,7 +125,7 @@ These 2 event rules will trigger the SSO lambda function when AWS detects manual
                 "<Name_permission_set_A>"  ],
             "TargetAccountid": [
                 "111111111111",
-                "222222222222"
+                "123456789012"
             ]
         },
         {
@@ -148,44 +141,16 @@ These 2 event rules will trigger the SSO lambda function when AWS detects manual
         }
     ]
   ```
-### A new AD group is created and needs an existing permission set and account mapping assigned to it.
-- The new AD group can be added by updating the SSO global or target mapping JSON file.
+### A new AD or SSO group is created and needs an existing permission set and account mapping assigned to it.
+- The new AD or SSO group can be added by updating the SSO global or target mapping JSON file.
 
-### A new AD group is created and needs an existing permission set assigned to a new account / list of accounts.
-- The new AD group can be added by updating the SSO global or target mapping JSON file.
+### A new AD or SSO group is created and needs an existing permission set assigned to a new account / list of accounts.
+- The new AD or SSO group can be added by updating the SSO global or target mapping JSON file.
 
-### A new AD group is created and needs a new permission set assigned to existing or new accounts
-- We need to first create a new permission set definition JSON file for the new permission set. Once the new permission set is created in primary account, then update the SSO group mapping JSON file to trigger the lambda function.
+### A new AD or SSO group is created and needs a new permission set assigned to existing or new accounts
+- We need to first create a new permission set definition JSON file for the new permission set. Once the new permission set is created in the primary account, then update the SSO group mapping JSON file to trigger the lambda function.
 
 ---
-
-### Troubleshoot and Breakglass steps:
--  In the ***worst-case scenario***, SSO lambda automation might delete/detach some the SSO login profiles which will block all the SSO users and groups' access to AWS console and command line. In order to continue the troubleshooting process in such scenario, we need to create a temporary IAM user to get access to AWS services. Disregard following steps if you have *root* access to your AWS account.
-
-Here are the recommended steps ( Run the following aws cli commands using other non-sso Admin user's programmatic access):
-
-```
-1) Create a temporary IAM user  
-$aws iam create-user --user-name sso-rescue 
-
-2) Grant the user AWS console access and create a password for log in
-$aws iam create-login-profile --user-name sso-rescue  --password <Enter_your_own_temp_password> 
-
-3) Attach some necessary permissions to the user to troubleshoot the problem.
-$aws iam attach-user-policy --policy-arn arn:aws:iam::aws:policy/AWSLambda_FullAccess --user-name sso-rescue 
-
-$aws iam attach-user-policy --policy-arn arn:aws:iam::aws:policy/AWSSSOMasterAccountAdministrator --user-name sso-rescue 
-
-$aws iam attach-user-policy --policy-arn arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess --user-name sso-rescue 
-
-4) Log in AWS console (https://aws.amazon.com/console/) using the new created IAM user's user name and password.
- - Use the Account id and the new created IAM user name and password.
-
-5) After the troubleshoot/rescue process. Delete the IAM user via CLI or AWS console.
-```
-## Important Note:
-- We can assign other necessary IAM policies to the temporary sso rescue IAM user. However if you decide to create a  **full-admin** IAM user in any AWS account. It's highly recommend to put a **MFA** on it.
-
 
 ## Examples of mapping files
 1. Example of permission-set file (random account ids):
@@ -237,7 +202,7 @@ $aws iam attach-user-policy --policy-arn arn:aws:iam::aws:policy/AmazonS3ReadOnl
             "9-ops-enterprisemonitoring"
         ],
         "TargetAccountid": [
-            "722415818373"
+            "123456789012"
         ]
     },
 	  {
@@ -246,14 +211,24 @@ $aws iam attach-user-policy --policy-arn arn:aws:iam::aws:policy/AmazonS3ReadOnl
             "10-ops-networking"
         ],
         "TargetAccountid": [
-            "722415818373",
-			"307353872784",
-			"672340315222",
-			"204671127579"
+            "123456789012",
+			"111111111111",
+			"222222222222",
+			"333333333333"
         ]
     }
 ]
 ```
+
+## Cleanup Step
+> Cautious.Tearing down SSO could interrupt the access to your AWS accounts. Please make sure you have other IAM roles or users to login the accounts. 
+1. Replace all the mapping information with an empty list "[]" in  global-mapping.json and target-mapping.json files. 
+Then re-run the pipeline to automatically remove all the SSO assignments.
+2. Delete all the permission set JSON files in the "permissions-set" folder
+Then re-run the pipeline to automatically remove all permission sets.
+3. Delete CloudFormation stack that was created using sso-automation.template
+4. Delete CloudFormation stack that was created using sso-s3-bucke.template
+5. Delete CloudFormation stack that was created using code-pipeline-stack.template  
 ---
 ## License
 (c) 2020 Amazon Web Services, Inc. or its affiliates. All Rights Reserved.

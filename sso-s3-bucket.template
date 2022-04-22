@@ -5,20 +5,20 @@ Parameters:
   BucketName:
     Type: String
     Description: S3 bucket name in lower case.
-    Default: sso-s3-automation-sample-bucket
+    Default:  <put_your_own_value>
   OrganizationId:
     Type: String
     Description: AWS Organizations ID
-    Default: o-s9upopegkd
+    Default: <put_your_own_value>
   SSOAutmationAdminArn:
     Type: CommaDelimitedList 
-    Description: The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) will have permissions to put and delete the SSO s3objects.
-    Default: "arn:aws:iam::117323466616:role/Admin,arn:aws:iam::117323466616:role/service-role/AWSControlTowerAdmin,arn:aws:iam::117323466616:role/SSOSamplePipelineCodeBuildRole"
+    Description: The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) will have permissions to put and delete the SSO s3objects. such as "arn:aws:iam::123456789012:role/Admin,arn:aws:iam::123456789012:role/service-role/AWSControlTowerAdmin,arn:aws:iam::123456789012:role/SSOSamplePipelineCodeBuildRole"
+    Default: #
   SSOKMSAdminArn:
     Type: CommaDelimitedList
     Description: The ARN of IAM role/user which will have permissions to manage the SSO KMS key.
-    Default: "arn:aws:iam::117323466616:role/Admin,arn:aws:iam::117323466616:role/service-role/AWSControlTowerAdmin,arn:aws:iam::117323466616:role/SSOSamplePipelineCodeBuildRole"
-
+    Default: <put_your_own_value>
+    
 Resources:
   S3Bucket:
     Type: AWS::S3::Bucket
