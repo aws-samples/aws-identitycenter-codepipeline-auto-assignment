@@ -22,8 +22,8 @@ AWS SSO requires the [AWS Organizations service](https://console.aws.amazon.com/
 
 1. In your AWS Organization primary account, use the sso-codepipeline-stack.template cloudformation template to provision the AWS Code Pipeline and related CICD resources in the same region that SSO service is enabled. Modify the CloudFormation template based on your accounts' information.
 2. Create an AWS CodeCommit repository and make sure the name of CodeCommit repository matches the value of "RepositoryName" parameter in your sso-codepipeline-stack.template.
-3. Verify and Update the CloudFormation parameters in "sso-automation-parameters.json" and "sso-s3-parameters.json" files.
-4. Create your own  permission sets json defination files  as well as the account assignment defination file "global-mapping.json" and "target-mapping.json".
+3. Update the CloudFormation parameters in "sso-automation-parameters.json" and "sso-s3-parameters.json" files.
+4. Create your own  permission sets json definition files as well as the account assignment "global-mapping.json" and "target-mapping.json" files.
 5. Push the following files to your CodeCommit repository:
 ```
 ├── LICENSE
@@ -224,15 +224,20 @@ These 2 event rules will trigger the SSO lambda function when AWS detects manual
 ```
 
 ## Cleanup Step
-> Cautious.Tearing down SSO could interrupt the access to your AWS accounts. Please make sure you have other IAM roles or users to login the accounts. 
->> The following steps will only remove the resources that provisioned by this solution. You may need to manually remove other permission sets or SSO assigments that are created outside this automation.
-1. Replace all the mapping information with an empty list "[]" in  global-mapping.json and target-mapping.json files. 
+
+1. Replace all the mapping information with an empty list "[]" in  global-mapping.json and target-mapping.json files:
+```
+[]
+```
 Then re-run the pipeline to automatically remove all the SSO assignments.
+
 2. Delete all the permission set JSON files in the "permissions-set" folder
 Then re-run the pipeline to automatically remove all permission sets.
 3. Delete CloudFormation stack that was created using sso-automation.template
 4. Delete CloudFormation stack that was created using sso-s3-bucke.template
 5. Delete CloudFormation stack that was created using code-pipeline-stack.template
+
+#### NOTE. Tearing down SSO could interrupt the access to your AWS accounts. Please make sure you have other IAM roles or users to login the accounts.  The following steps will only remove the resources that provisioned by this solution. You may need to manually remove other permission sets or SSO assigments that are created outside this automation.
 
 ---
 ## License
