@@ -59,7 +59,7 @@ AWS SSO requires the [AWS Organizations service](https://console.aws.amazon.com/
 
 ### Architecture Diagram
   
-  ![Image of SSO_Solution_Diagram](diagram/architecture.png)
+  ![Image of SSO_Solution_Diagram](diagram/architecture_diagram.png)
 
 ### This solution covers the following scenarios:
 - If any change had been made through another approach without updating JSON mapping files in the source, such as a bitbucket, will this solution be able to detect and fix those drifts? 
