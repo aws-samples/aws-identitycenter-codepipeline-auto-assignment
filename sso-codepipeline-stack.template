@@ -3,22 +3,27 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: Creates a Project Pipeline for the different Branches
 Parameters:
   RepositoryName:
+    Description: 'The name of CodeCommit repository, e.g. sso-automation-sample-code-repo'
     Type: String
-    Default: sso-automation-sample-code-repo
   RepoBranch:
+    Description: The name of branch that will trigger the CodePipeline run.
     Type: String
     Default: main
   ArtifactBucketName:
-    Description: S3 artifact bucket for the SSO pipeline.
+    Description: >-
+      S3 artifact bucket for the AWS CodePipeline, e.g.
+      sso-pipeline-artifact-bucket-<accountid>
     Type: String
-    Default: sso-pipeline-artifact-bucket
   SSOMappingBucketName:
     Type: String
-    Description: S3 Bucket that will be used to stores the SSO mapping JSON files.
+    Description: >-
+      The same bucket name will be used in the automation and s3 stack. This S3
+      bucket stores the permission sets and mapping files.
     Default: sso-s3-automation-sample-bucket
   SSOEnablerFunctionName:
     Type: String
     Default: sso-permissionses-enabler
+
 Resources:
   PipelineArtifactStoreBucket:
     Type: 'AWS::S3::Bucket'
@@ -232,7 +237,7 @@ Resources:
       Description: Compress Lambda python scripts and sync the zip files to SSO secure S3 bucket.
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Artifacts:
-        Type: no_artifacts
+        Type: NO_ARTIFACTS
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
@@ -257,7 +262,7 @@ Resources:
         defination files to s3.
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Artifacts:
-        Type: no_artifacts
+        Type: NO_ARTIFACTS
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL

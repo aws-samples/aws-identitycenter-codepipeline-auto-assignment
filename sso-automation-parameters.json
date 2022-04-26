@@ -1,10 +1,10 @@
 {
     "Parameters":
     {
-        "S3SourceBucketName": "sso-s3-automation-sample-bucket",
-        "SSOInstanceARN": "arn:aws:sso:::instance/ssoins-66849c208eed8e56",
-        "IdentityStoreId": "d-9a6712bd41",
-        "SSOAutmationRoleName": "arn:aws:iam::117323466616:role/CodebuildAdmin",
-        "SNSEmailEndpointSubscription": "liuwenxi@amazon.com"
+        "S3SourceBucketName": "t",
+        "SSOInstanceARN": "",
+        "IdentityStoreId": "",
+        "SSOAutmationRoleName": "",
+        "SNSEmailEndpointSubscription": ""
     }
 }

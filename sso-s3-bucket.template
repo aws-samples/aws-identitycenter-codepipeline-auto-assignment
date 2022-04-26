@@ -1,26 +1,35 @@
 ---
 AWSTemplateFormatVersion: 2010-09-09
-Description: Cloudformation template creating S3 and KMS resources for SSO automation solution. The s3 bucket will be used to store SSO permission sets and assignment mapping files and lambda zip files.
+Description: >-
+  Cloudformation template creating S3 and KMS resources for SSO automation
+  solution. The s3 bucket stores SSO permission sets and
+  assignment mapping files and lambda zip files.
 Parameters:
   S3SourceBucketName:
     Type: String
-    Description: The S3 bucket that stores the lambda code as well as permission set and mapping definition. It's the same name that is used in sso-automation.template.
+    Description: >-
+      The S3 bucket that stores the lambda code as well as permission set and
+      mapping definition. It's the same name that is used in
+      sso-automation.template.
   OrganizationId:
     Type: String
     Description: AWS Organizations ID
   SSOAutmationAdminArn:
-    Type: CommaDelimitedList 
-    Description: The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) will have permissions to put and delete the SSO s3objects.
+    Type: CommaDelimitedList
+    Description: >-
+      The ARN of SSO automation admin IAM role or IAM user. This IAM role(or
+      user) will have permissions to put and delete the SSO s3objects.
   SSOKMSAdminArn:
     Type: CommaDelimitedList
-    Description: The ARN of IAM role/user which will have permissions to manage the SSO KMS key.
+    Description: >-
+      The ARN of IAM role/user which will have permissions to manage the SSO KMS
+      key.
 
 Resources:
   S3Bucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Delete
     Properties:
-      # Use this bucket name to update the s3 sync command in buildspec-zipfiles.yml file
       BucketName: !Ref S3SourceBucketName 
       VersioningConfiguration: 
         Status: Enabled
@@ -87,7 +96,7 @@ Resources:
               !Sub arn:aws:s3:::${S3Bucket}/*
             Condition:
               ArnNotLike:
-                aws:PrincipalArn: !Ref SSOAutmationAdminArn         
+                aws:PrincipalArn: !Ref SSOAutmationAdminArn
           - Sid: OnlyUpdatePolicyForSSOAutomationRole
             Action:
               - s3:PutBucketPolicy
@@ -99,7 +108,7 @@ Resources:
             Condition:
               ArnNotLike:
                 aws:PrincipalArn: !Ref SSOAutmationAdminArn
-          - Sid: require_kms_encryption_on_puts # KMS encryption
+          - Sid: require_kms_encryption_on_puts
             Action:
               - s3:PutObject
             Effect: Deny
@@ -166,8 +175,8 @@ Resources:
               ForAnyValue:ArnLike:
                 #IAM Role ARN of SSO automation Lambda functions
                 aws:PrincipalARN: 
-                  - "arn:aws:iam::*:role/SSOPermissionSetAutomationLambdaRole"      
-                  - "arn:aws:iam::*:role/SSOAssignmentAutomationLambdaRole"                
+                  - "arn:aws:iam::*:role/SSOPermissionSetAutomationLambdaRole"
+                  - "arn:aws:iam::*:role/SSOAssignmentAutomationLambdaRole"
               StringEquals:
                 aws:PrincipalOrgID: !Ref OrganizationId
           # - Sid: Allow desribe key permission for other monitor roles

@@ -1,5 +1,6 @@
+---
 AWSTemplateFormatVersion: 2010-09-09
-Description: Cloudformation template creating resources for SSO automation solution.
+Description: CloudFormation template creating resources for SSO automation solution.
 Parameters:
   SSOInstanceARN:
     Type: String
@@ -8,29 +9,39 @@ Parameters:
     Type: String
     Description: Identity Store ID can be found on the AWS SSO console 'Settings' page.
   GlobalSSOGroupMappingFileName:
-    Description: The Golbal mapping json file name. You can use the default value.
+    Description: The global mapping json file name. You can use the default value.
     Type: String
     Default: global-mapping.json
   TargetSSOGroupMappingFileName:
-    Description: The target mapping json file name. You can use the default value. 
+    Description: The target mapping json file name. You can use the default value.
     Type: String
     Default: target-mapping.json
   S3SourceBucketName:
-    Description: The S3 bucket that stores the lambda code as well as permission set and mapping definition. It's the same name that is used in sso-s3-bucket.template.
+    Description: >-
+      The S3 bucket that stores the lambda code as well as permission set and
+      mapping definition. It's the same name that is used in
+      sso-s3-bucket.template.
     Type: String
   AssignmentLambdaZipFileName:
-    Description: Lambda function code that manages SSO account assignments. You can use the default value.
+    Description: >-
+      Lambda function code that manages SSO account assignments. You can use the
+      default value.
     Type: String
     Default: sso-auto-assign.zip
   PermissionSetsLambdaZipFileName:
-    Description: Lambda function code that manages SSO permissionsets. You can use the default value.
+    Description: >-
+      Lambda function code that manages SSO permission sets. You can use the
+      default value.
     Type: String
     Default: sso-auto-permissionsets.zip
   SSOAutmationRoleName:
-    Type: CommaDelimitedList 
-    Description: The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) will have permissions to update SSO s3objects and trigger the lambda function.
+    Type: CommaDelimitedList
+    Description: >-
+      The ARN of SSO automation admin IAM role or IAM user. This IAM role (or
+      user) will have permissions to update SSO s3objects and trigger the lambda
+      function.
   SNSEmailEndpointSubscription:
-    Description: The SNS subscription which is used to receive SNS email notification.
+    Description: The SNS subscription which used to receive SNS email notification.
     Type: String
 
 Resources:
