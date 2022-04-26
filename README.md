@@ -224,20 +224,20 @@ These 2 event rules will trigger the SSO lambda function when AWS detects manual
 ```
 
 ## Cleanup Step
-
-1. Replace all the mapping information with an empty list "[]" in  global-mapping.json and target-mapping.json files:
+#### NOTE. Tearing down SSO could interrupt the access to your AWS accounts. Please make sure you have other IAM roles or users to login the accounts.  
+---
+1. Replace all the mapping information with an empty list "[]" in global-mapping.json and target-mapping.json files. Then re-run the pipeline to automatically remove all the SSO assignments.
 ```
 []
 ```
-Then re-run the pipeline to automatically remove all the SSO assignments.
-
 2. Delete all the permission set JSON files in the "permissions-set" folder
 Then re-run the pipeline to automatically remove all permission sets.
 3. Delete CloudFormation stack that was created using sso-automation.template
 4. Delete CloudFormation stack that was created using sso-s3-bucke.template
 5. Delete CloudFormation stack that was created using code-pipeline-stack.template
 
-#### NOTE. Tearing down SSO could interrupt the access to your AWS accounts. Please make sure you have other IAM roles or users to login the accounts.  The following steps will only remove the resources that provisioned by this solution. You may need to manually remove other permission sets or SSO assigments that are created outside this automation.
+The above steps will only remove the resources that provisioned by this solution. You may need to manually remove other permission sets or SSO assigments that are created outside this automation.
+
 
 ---
 ## License
