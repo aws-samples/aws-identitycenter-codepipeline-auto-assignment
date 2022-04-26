@@ -20,38 +20,42 @@ AWS SSO requires the [AWS Organizations service](https://console.aws.amazon.com/
 
 ### How to implement this solution in Organization primary account:
 
-1. In your AWS Organization primary account, use the codepipeline-stack.template cloudformation template to provision the AWS Code Pipeline and related CICD resources in the same region that SSO service is enabled. Modify the CloudFormation template based on your accounts' information.
-2. Create an AWS CodeCommit repository and make sure the name of CodeCommit repository matches the value of "RepositoryName" parameter in your codepipeline-stack.template.
-3. Verify and Update the parameter in "sso-automation.template" and "sso-s3-bucket.template"
-4. Create your own "global-mapping.json", "target-mapping.json" and permission sets JSON files.
+1. In your AWS Organization primary account, use the sso-codepipeline-stack.template cloudformation template to provision the AWS Code Pipeline and related CICD resources in the same region that SSO service is enabled. Modify the CloudFormation template based on your accounts' information.
+2. Create an AWS CodeCommit repository and make sure the name of CodeCommit repository matches the value of "RepositoryName" parameter in your sso-codepipeline-stack.template.
+3. Verify and Update the CloudFormation parameters in "sso-automation-parameters.json" and "sso-s3-parameters.json" files.
+4. Create your own  permission sets json defination files  as well as the account assignment defination file "global-mapping.json" and "target-mapping.json".
 5. Push the following files to your CodeCommit repository:
 ```
 ├── LICENSE
 ├── README.md
-├── buildspec_mapping.yml
-├── buildspec_zipfiles.yml
-├── codepipeline-stack.template
-├── lambda_code/
-│   ├── sso-auto-assign
-│   │   ├── auto-assignment.py
-│   │   └── cfnresponse.py
-│   └── sso-auto-permissionsets
-│       ├── auto-permissionsets.py
-│       └── cfnresponse.py
+├── src
+│   ├── codebuild
+│   │   ├── buildspec-mapping.yml
+│   │   └── buildspec-zipfiles.yml
+│   └── lambda-code
+│       ├── sso-auto-assign
+│       │   ├── auto-assignment.py
+│       │   └── cfnresponse.py
+│       └── sso-auto-permissionsets
+│           ├── auto-permissionsets.py
+│           └── cfnresponse.py
+├── sso-automation-parameters.json
 ├── sso-automation.template
 ├── sso-s3-bucket.template
-└── sso_mapping_info/
+├── sso-s3-parameters.json
+├── sso-codepipeline-stack.template
+└── sso-mapping-info
     ├── global-mapping.json
     └── target-mapping.json
-    └── permission-sets/
+    └── permission-sets
         ├── example-1.json
         └── example-2.json
-        └── ...example-99.json
+        └── ...
+        └── example-99.json
 
 ```
-6. The pipeline will automatically create 2 new CloudFormation stacks in your account and upload your SSO permission and mapping files to a centralized S3 bucket.
-7. Manually approve the review stage and once the Pipeline completed, verify the permission sets and account mapping in AWS SSO service console.
-
+6. The pipeline will automatically create 2 new CloudFormation stacks in your account and upload your SSO permission and mapping files to a centralized S3 bucket. The non-default parameters of sso-s3-bucket.template and sso-automation.template are defined in sso-s3-parameters.json and sso-automation-parameters.json
+7. The 'ReviewAndExecute' stage needs manual approval before the Pipeline invoke the Lambda function. Once the pipeline is completed, verify the permission sets and account mapping on the AWS SSO service console.
 
 ### Architecture Diagram
   
@@ -160,7 +164,7 @@ These 2 event rules will trigger the SSO lambda function when AWS detects manual
     "Tags": [
         {
             "Key": "sso-solution",
-            "Value": "test"
+            "Value": "example"
         }
     ],
     "ManagedPolicies": [
@@ -221,6 +225,7 @@ These 2 event rules will trigger the SSO lambda function when AWS detects manual
 
 ## Cleanup Step
 > Cautious.Tearing down SSO could interrupt the access to your AWS accounts. Please make sure you have other IAM roles or users to login the accounts. 
+>> The following steps will only remove the resources that provisioned by this solution. You may need to manually remove other permission sets or SSO assigments that are created outside this automation.
 1. Replace all the mapping information with an empty list "[]" in  global-mapping.json and target-mapping.json files. 
 Then re-run the pipeline to automatically remove all the SSO assignments.
 2. Delete all the permission set JSON files in the "permissions-set" folder
@@ -228,7 +233,6 @@ Then re-run the pipeline to automatically remove all permission sets.
 3. Delete CloudFormation stack that was created using sso-automation.template
 4. Delete CloudFormation stack that was created using sso-s3-bucke.template
 5. Delete CloudFormation stack that was created using code-pipeline-stack.template
-The above steps will only remove the resources that provisioned by this solution. You may need to manually remove other permission sets or SSO assigments that are created outside this automation.
 
 ---
 ## License

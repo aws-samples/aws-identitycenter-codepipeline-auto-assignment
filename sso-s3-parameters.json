@@ -1,0 +1,9 @@
+{
+    "Parameters": 
+    {
+        "S3SourceBucketName": "sso-s3-automation-sample-bucket",
+        "OrganizationId": "o-s9upopegkd",
+        "SSOAutmationAdminArn": "arn:aws:iam::117323466616:role/Admin,arn:aws:iam::117323466616:role/service-role/AWSControlTowerAdmin,arn:aws:iam::117323466616:role/SSOSamplePipelineCodeBuildRole",
+        "SSOKMSAdminArn": "arn:aws:iam::117323466616:role/Admin,arn:aws:iam::117323466616:role/service-role/AWSControlTowerAdmin,arn:aws:iam::117323466616:role/SSOSamplePipelineCodeBuildRole"
+    }
+}

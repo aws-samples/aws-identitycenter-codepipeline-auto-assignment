@@ -2,29 +2,26 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: Cloudformation template creating S3 and KMS resources for SSO automation solution. The s3 bucket will be used to store SSO permission sets and assignment mapping files and lambda zip files.
 Parameters:
-  BucketName:
+  S3SourceBucketName:
     Type: String
-    Description: S3 bucket name in lower case.
-    Default:  <put_your_own_value>
+    Description: The S3 bucket that stores the lambda code as well as permission set and mapping definition. It's the same name that is used in sso-automation.template.
   OrganizationId:
     Type: String
     Description: AWS Organizations ID
-    Default: <put_your_own_value>
   SSOAutmationAdminArn:
     Type: CommaDelimitedList 
-    Description: The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) will have permissions to put and delete the SSO s3objects. such as "arn:aws:iam::123456789012:role/Admin,arn:aws:iam::123456789012:role/service-role/AWSControlTowerAdmin,arn:aws:iam::123456789012:role/SSOSamplePipelineCodeBuildRole"
-    Default: #
+    Description: The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) will have permissions to put and delete the SSO s3objects.
   SSOKMSAdminArn:
     Type: CommaDelimitedList
     Description: The ARN of IAM role/user which will have permissions to manage the SSO KMS key.
-    Default: <put_your_own_value>
-    
+
 Resources:
   S3Bucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Delete
     Properties:
-      BucketName: !Ref BucketName # Use this bucket name to update the s3 sync command in buildspec_zipfiles.yml file
+      # Use this bucket name to update the s3 sync command in buildspec-zipfiles.yml file
+      BucketName: !Ref S3SourceBucketName 
       VersioningConfiguration: 
         Status: Enabled
       BucketEncryption:
@@ -167,7 +164,8 @@ Resources:
             Resource: "*" 
             Condition:
               ForAnyValue:ArnLike:
-                aws:PrincipalARN: #IAM Role ARN of SSO automation Lambda functions
+                #IAM Role ARN of SSO automation Lambda functions
+                aws:PrincipalARN: 
                   - "arn:aws:iam::*:role/SSOPermissionSetAutomationLambdaRole"      
                   - "arn:aws:iam::*:role/SSOAssignmentAutomationLambdaRole"                
               StringEquals:

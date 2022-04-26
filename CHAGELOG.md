@@ -4,8 +4,10 @@
 
 
 # CHANGELOG
-TBD:
-create variables for buildspec projects
+
+## April  25
+- Use CFN configuration file to define the stack parameters.
+- Create variables for buildspec projects
 ## April  20
 - README updates
 ## April  15

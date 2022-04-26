@@ -1,36 +1,22 @@
 [
      {
-         "GlobalGroupName": "Example_1-global-admin",
+         "GlobalGroupName": "Example_Group_1",
          "PermissionSetName": [
              "1-global-admin"
          ],
          "TargetAccountid": "Global"
      },
      {
-         "GlobalGroupName": "Example_2-global-reader",
+         "GlobalGroupName": "Example_Group_2",
          "PermissionSetName": [
              "2-global-reader"
          ],
          "TargetAccountid": "Global"
      },
      {
-         "GlobalGroupName": "Example_3-global-billing",
+         "GlobalGroupName": "Example_Group_3",
          "PermissionSetName": [
              "3-global-billing"
-         ],
-         "TargetAccountid": "Global"
-     },
-     {
-         "GlobalGroupName": "Example_4-global-operations-support",
-         "PermissionSetName": [
-             "4-global-operations-support"
-         ],
-         "TargetAccountid": "Global"
-     },
-     {
-         "GlobalGroupName": "Example_8-global-kmsadmin",
-         "PermissionSetName": [
-             "8-global-kmsadmin"
          ],
          "TargetAccountid": "Global"
      }

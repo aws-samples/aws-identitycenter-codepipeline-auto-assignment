@@ -4,20 +4,21 @@ Description: Creates a Project Pipeline for the different Branches
 Parameters:
   RepositoryName:
     Type: String
-    Description: The CodeCommit repository name.
     Default: sso-automation-sample-code-repo
   RepoBranch:
     Type: String
-    Description: The CodeCommit repository branch name that will trigger the pipeline run.
     Default: main
   ArtifactBucketName:
+    Description: S3 artifact bucket for the SSO pipeline.
     Type: String
-    Description: The CodeBuild artifact bucket.
     Default: sso-pipeline-artifact-bucket
+  SSOMappingBucketName:
+    Type: String
+    Description: S3 Bucket that will be used to stores the SSO mapping JSON files.
+    Default: sso-s3-automation-sample-bucket
   SSOEnablerFunctionName:
     Type: String
     Default: sso-permissionses-enabler
-
 Resources:
   PipelineArtifactStoreBucket:
     Type: 'AWS::S3::Bucket'
@@ -102,7 +103,8 @@ Resources:
                 ActionMode: CREATE_UPDATE
                 StackName: SSO-Create-Secure-S3-Bucket
                 Capabilities: CAPABILITY_IAM
-                TemplatePath: 'SourceArtifacts::sso-s3-bucket.template'
+                TemplateConfiguration: SourceArtifacts::sso-s3-parameters.json
+                TemplatePath: SourceArtifacts::sso-s3-bucket.template
                 RoleArn: !GetAtt CodeBuildRole.Arn
               InputArtifacts:
                 - Name: SourceArtifacts
@@ -132,7 +134,8 @@ Resources:
                 ActionMode: CREATE_UPDATE
                 StackName: SSO-Automation-Sample
                 Capabilities: 'CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND'
-                TemplatePath: 'SourceArtifacts::sso-automation.template'
+                TemplateConfiguration: SourceArtifacts::sso-automation-parameters.json
+                TemplatePath: SourceArtifacts::sso-automation.template
                 RoleArn: !GetAtt CodeBuildRole.Arn
               RunOrder: 1
             - Name: SyncMappingFiles
@@ -226,9 +229,7 @@ Resources:
     Type: 'AWS::CodeBuild::Project'
     Properties:
       Name: BuildandUploadLambdaFiles
-      Description: >-
-        Compress Lambda python scripts and sync the zip files to SSO secure S3
-        bucket.
+      Description: Compress Lambda python scripts and sync the zip files to SSO secure S3 bucket.
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Artifacts:
         Type: no_artifacts
@@ -236,11 +237,15 @@ Resources:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
         Image: 'aws/codebuild/standard:5.0'
+        EnvironmentVariables:
+          - Name: S3_BUCKET_NAME
+            Type: PLAINTEXT
+            Value: !Ref SSOMappingBucketName
       Source:
         Type: CODECOMMIT
         Location: !Sub >-
           https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${RepositoryName}
-        BuildSpec: buildspec_zipfiles.yml
+        BuildSpec: src/codebuild/buildspec-zipfiles.yml
       SourceVersion: !Sub 'refs/heads/${RepoBranch}'
       TimeoutInMinutes: 10
   UploadMappingFiles:
@@ -257,11 +262,15 @@ Resources:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
         Image: 'aws/codebuild/standard:5.0'
+        EnvironmentVariables:
+          - Name: S3_BUCKET_NAME
+            Type: PLAINTEXT
+            Value: !Ref SSOMappingBucketName
       Source:
         Type: CODECOMMIT
         Location: !Sub >-
           https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${RepositoryName}
-        BuildSpec: buildspec_mapping.yml
+        BuildSpec: src/codebuild/buildspec-mapping.yml
       SourceVersion: !Sub 'refs/heads/${RepoBranch}'
       TimeoutInMinutes: 10
   CodeBuildRole:

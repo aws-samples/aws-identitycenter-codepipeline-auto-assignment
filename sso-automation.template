@@ -1,35 +1,12 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: Cloudformation template creating resources for SSO automation solution.
-Metadata: 
-  AWS::CloudFormation::Interface: 
-    ParameterGroups: 
-      - 
-        Label: 
-          default: "SSO Configuration"
-        Parameters: 
-          - SSOInstanceARN
-          - IdentityStoreId
-          - SSOAutmationRoleName
-          - SNSEmailEndpointSubscription
-      - 
-        Label: 
-          default: "Other Input Configuration"
-        Parameters:
-          - S3SourceBucketName
-          - GlobalSSOGroupMappingFileName
-          - TargetSSOGroupMappingFileName
-          - AssignmentLambdaZipFileName
-          - PermissionSetsLambdaZipFileName
-
 Parameters:
   SSOInstanceARN:
     Type: String
     Description: SSOInstanceARN can be found on the AWS SSO console 'Settings' page.
-    Default: <put_your_own_value>
   IdentityStoreId:
     Type: String
     Description: Identity Store ID can be found on the AWS SSO console 'Settings' page.
-    Default: <put_your_own_value>
   GlobalSSOGroupMappingFileName:
     Description: The Golbal mapping json file name. You can use the default value.
     Type: String
@@ -39,9 +16,8 @@ Parameters:
     Type: String
     Default: target-mapping.json
   S3SourceBucketName:
-    Description: the S3 bucket that stores the lambda code as well as permission set and mapping definition. You can use the same bucket name that defined in sso-s3-bucket.template.
+    Description: The S3 bucket that stores the lambda code as well as permission set and mapping definition. It's the same name that is used in sso-s3-bucket.template.
     Type: String
-    Default:  <put_your_own_value>
   AssignmentLambdaZipFileName:
     Description: Lambda function code that manages SSO account assignments. You can use the default value.
     Type: String
@@ -51,18 +27,16 @@ Parameters:
     Type: String
     Default: sso-auto-permissionsets.zip
   SSOAutmationRoleName:
-    Type: String 
-    Description: The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) will have permissions to update SSO s3objects and trigger the lambda function.For example, "arn:aws:iam::117323466616:role/CodebuildAdmin"
-    Default: <put_your_own_value> 
+    Type: CommaDelimitedList 
+    Description: The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) will have permissions to update SSO s3objects and trigger the lambda function.
   SNSEmailEndpointSubscription:
-    Description: The email address that will be used to receive CloudWatch event notification 
+    Description: The SNS subscription which is used to receive SNS email notification.
     Type: String
-    Default: <put_your_own_value> 
 
 Resources:
-#################################################
-#Lambda function(1) that manages SSO permissionsets 
-#################################################
+######################################################
+# Lambda function(1) that manages SSO permission sets #
+######################################################
   SSOPermissionSetAutomationLambda:
     Type: 'AWS::Lambda::Function'
     Properties:
@@ -139,14 +113,9 @@ Resources:
                   - 'sns:Publish'                    
                 Resource: '*'
 
-#  SSOPermissionSetAutomationLambdaLambdaInvoker:
-#    Type: 'Custom::InvokeLambda'
-#    Properties:
-#      ServiceToken: !GetAtt SSOPermissionSetAutomationLambda.Arn
-
-#####################################################
-#Lambda function(2) that manages SSO account assignment 
-#####################################################
+#########################################################
+# Lambda function(2) that manages SSO account assignment #
+#########################################################
   SSOAssignmentAutomationLambda:
     Type: 'AWS::Lambda::Function'
     Properties:
@@ -229,9 +198,9 @@ Resources:
                   - 'kms:Encrypt'       
                   - 'kms:Decrypt'               
                 Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*" 
-########################################################
-#AWS Event Rules - Trigger Automation by regular actions       
-########################################################
+##########################################################
+# AWS Event Rules - Trigger Automation by regular actions #
+##########################################################
   SSOCreateEventRuleforOrganization:
     Type: 'AWS::Events::Rule'
     Properties:
@@ -305,7 +274,7 @@ Resources:
   #       - Arn: !GetAtt SSOAlertSNSNotificationLambda.Arn
   #         Id: TargetFunctionSSN
 
-  # SSOManualActionDetectionRule2:              # Detect manual user interaction from eventSource sso-directory.amazonaws.com
+  # SSOManualActionDetectionRule2:
   #   Type: 'AWS::Events::Rule'
   #   Properties:
   #     Description: Trigger the SSO automation lambda function when it detects manual user interaction from eventSource sso-directory.amazonaws.com
