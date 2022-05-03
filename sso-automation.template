@@ -34,7 +34,7 @@ Parameters:
       default value.
     Type: String
     Default: sso-auto-permissionsets.zip
-  SSOAutmationRoleName:
+  SSOAutmationAdminArn:
     Type: CommaDelimitedList
     Description: >-
       The ARN of SSO automation admin IAM role or IAM user. This IAM role (or
@@ -274,7 +274,7 @@ Resources:
   #             sessionIssuer:
   #               userName:
   #                 - anything-but: 
-  #                     - !Ref SSOAutmationRoleName
+  #                     - !Ref SSOAutmationAdminArn
   #                     - SSOAssignmentAutomationLambdaRole
   #                     - SSOPermissionSetAutomationLambdaRole
   #     Name: SSOManualActionDetectionRule1
@@ -335,7 +335,7 @@ Resources:
   #             sessionIssuer:
   #               userName:
   #                 - anything-but: 
-  #                     - !Ref SSOAutmationRoleName
+  #                     - !Ref SSOAutmationAdminArn
   #                     - SSOAssignmentAutomationLambdaRole
   #                     - SSOPermissionSetAutomationLambdaRole        
   #     Name: SSOManualActionDetectionRule2

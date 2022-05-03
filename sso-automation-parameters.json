@@ -4,7 +4,7 @@
         "S3SourceBucketName": "",
         "SSOInstanceARN": "",
         "IdentityStoreId": "",
-        "SSOAutmationRoleName": "",
+        "SSOAutmationAdminArn": "",
         "SNSEmailEndpointSubscription": ""
     }
 }
