@@ -1,10 +1,14 @@
 {
-    "Name": "3-global-billing",
-    "Description": "3-global-billing",
+    "Name": "3-example-billing",
+    "Description": "3-example-billing",
     "Tags": [
         {
             "Key": "sso-solution",
             "Value": "test"
+        },
+        {
+            "Key": "scope",
+            "Value": "global"
         }
     ],
     "ManagedPolicies": [],
@@ -15,6 +19,10 @@
                 "Sid": "BillingReader",
                 "Effect": "Allow",
                 "Action": [
+                    "aws-portal:ViewPaymentMethods",
+                    "aws-portal:ViewAccount",
+                    "aws-portal:ViewBilling",
+                    "aws-portal:ViewUsage",
                     "budgets:ViewBudget"
                 ],
                 "Resource": "*"

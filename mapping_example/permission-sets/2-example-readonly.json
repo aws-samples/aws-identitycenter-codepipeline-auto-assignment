@@ -1,10 +1,14 @@
 {
-    "Name": "2-global-reader",
-    "Description": "2-global-reader",
+    "Name": "2-example-readonly",
+    "Description": "2-example-readonly",
     "Tags": [
         {
             "Key": "sso-solution",
             "Value": "test"
+        },
+        {
+            "Key": "scope",
+            "Value": "global"
         }
     ],
     "ManagedPolicies": [

@@ -2,21 +2,21 @@
      {
          "GlobalGroupName": "Example_Group_1",
          "PermissionSetName": [
-             "1-global-admin"
+             "1-example-admin"
          ],
          "TargetAccountid": "Global"
      },
      {
          "GlobalGroupName": "Example_Group_2",
          "PermissionSetName": [
-             "2-global-reader"
+             "2-example-readonly"
          ],
          "TargetAccountid": "Global"
      },
      {
          "GlobalGroupName": "Example_Group_3",
          "PermissionSetName": [
-             "3-global-billing"
+             "3-example-billing"
          ],
          "TargetAccountid": "Global"
      }

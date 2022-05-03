@@ -1,10 +1,14 @@
 {
-    "Name": "1-global-admin",
-    "Description": "1-global-admin",
+    "Name": "1-example-admin",
+    "Description": "1-example-admin",
     "Tags": [
         {
             "Key": "sso-solution",
             "Value": "test"
+        },
+        {
+            "Key": "scope",
+            "Value": "global"
         }
     ],
     "ManagedPolicies": [
