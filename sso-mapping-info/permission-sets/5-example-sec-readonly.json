@@ -13,22 +13,6 @@
     ],
     "ManagedPolicies": [
         {
-            "Name": "AWSSecurityHubReadOnlyAccess",
-            "Arn": "arn:aws:iam::aws:policy/AWSSecurityHubReadOnlyAccess"
-        },
-        {
-            "Name": "AmazonGuardDutyReadOnlyAccess",
-            "Arn": "arn:aws:iam::aws:policy/AmazonGuardDutyReadOnlyAccess"
-        },
-        {
-            "Name": "AmazonDetectiveFullAccess",
-            "Arn": "arn:aws:iam::aws:policy/AmazonDetectiveFullAccess"
-        },
-        {
-            "Name": "CloudWatchReadOnlyAccess",
-            "Arn": "arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess"
-        },
-        {
             "Name": "CloudWatchEventsReadOnlyAccess",
             "Arn": "arn:aws:iam::aws:policy/CloudWatchEventsReadOnlyAccess"
         },
