@@ -14,16 +14,16 @@ Parameters:
   OrganizationId:
     Type: String
     Description: AWS Organizations ID
-  SSOAutmationAdminArn:
-    Type: CommaDelimitedList
+  SSOAutomationAdminArn:
+    Type: String
     Description: >-
-      The ARN of SSO automation admin IAM role or IAM user. This IAM role(or
-      user) will have permissions to put and delete the SSO s3objects.
+      The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) 
+      will have permissions to manage S3 bucket, besides SSOAutoPipelineCodeBuildRole.
   SSOKMSAdminArn:
-    Type: CommaDelimitedList
+    Type: String
     Description: >-
-      The ARN of IAM role/user which will have permissions to manage the SSO KMS
-      key.
+      The ARN of IAM role(or user) which will have permissions to manage the SSO KMS
+      key, besides SSOAutoPipelineCodeBuildRole.
 
 Resources:
   S3Bucket:
@@ -83,7 +83,12 @@ Resources:
               !Sub 'arn:aws:s3:::${S3Bucket}'
             Principal: 
               AWS: "*"
-          - Sid: OnlyAllowObjectUpdateSSOAutomationRole
+            Condition:
+              ArnNotLike:
+                aws:PrincipalArn: 
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOAutoPipelineCodeBuildRole"
+                  - !Ref SSOAutomationAdminArn
+          - Sid: AllowObjectUpdate
             Action:
               - s3:DeleteObject
               - s3:DeleteObjectVersion
@@ -96,8 +101,10 @@ Resources:
               !Sub arn:aws:s3:::${S3Bucket}/*
             Condition:
               ArnNotLike:
-                aws:PrincipalArn: !Ref SSOAutmationAdminArn
-          - Sid: OnlyUpdatePolicyForSSOAutomationRole
+                aws:PrincipalArn: 
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOAutoPipelineCodeBuildRole"
+                  - !Ref SSOAutomationAdminArn
+          - Sid: OnlyUpdatePolicy
             Action:
               - s3:PutBucketPolicy
               - s3:DeleteBucketPolicy
@@ -107,7 +114,9 @@ Resources:
               !Sub arn:aws:s3:::${S3Bucket}
             Condition:
               ArnNotLike:
-                aws:PrincipalArn: !Ref SSOAutmationAdminArn
+                aws:PrincipalArn: 
+                  - !Ref SSOAutomationAdminArn
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOAutoPipelineCodeBuildRole"
           - Sid: require_kms_encryption_on_puts
             Action:
               - s3:PutObject
@@ -129,20 +138,23 @@ Resources:
         Version: 2012-10-17
         Id: keypolicy
         Statement:
-          - Sid: Enable SSOAutomation role Permissions
+          - Sid: KMS Admin Permissions
             Effect: Allow
             Principal:
-              AWS: !Ref SSOAutmationAdminArn 
+              AWS: !Ref SSOKMSAdminArn  
             Action: "kms:*"
             Resource: "*"
-          - Sid: Enable cloudformation stackset role to manage for automation
+          - Sid: Key management Permissions
             Effect: Allow
             Principal:
-              AWS: !Ref SSOKMSAdminArn
+              AWS: 
+                - !Ref SSOAutomationAdminArn
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOAutoPipelineCodeBuildRole"
             Action: 
               - "kms:Create*"
               - "kms:Describe*"
               - "kms:Enable*"
+              - "kms:GenerateDataKey"
               - "kms:List*"
               - "kms:Put*"
               - "kms:Revoke*"
@@ -153,12 +165,8 @@ Resources:
               - "kms:UntagResource"
               - "kms:ScheduleKeyDeletion"
               - "kms:CancelKeyDeletion"
-              - "kms:Encrypt"
-              - "kms:Decrypt"
-              - "kms:ReEncrypt*"
-              - "kms:GenerateDataKey"
-            Resource: "*" 
-          - Sid: Enable cloudformation stackset role to manage for automation
+            Resource: "*"
+          - Sid: Lambda Permissions
             Effect: Allow
             Principal:
               AWS: "*"
@@ -173,12 +181,11 @@ Resources:
             Resource: "*" 
             Condition:
               ForAnyValue:ArnLike:
-                #IAM Role ARN of SSO automation Lambda functions
-                aws:PrincipalARN: 
-                  - "arn:aws:iam::*:role/SSOPermissionSetAutomationLambdaRole"
-                  - "arn:aws:iam::*:role/SSOAssignmentAutomationLambdaRole"
-              StringEquals:
-                aws:PrincipalOrgID: !Ref OrganizationId
+                aws:PrincipalARN:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOAutoPipelineCodeBuildRole"
+                  #IAM Role ARN of SSO automation Lambda functions
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOPermissionSetAutomationLambdaRole"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOAssignmentAutomationLambdaRole"
           # - Sid: Allow desribe key permission for other monitor roles
           #   Effect: Allow
           #   Principal:

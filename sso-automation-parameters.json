@@ -1,10 +1,9 @@
 {
-    "Parameters":
-    {
-        "S3SourceBucketName": "",
-        "SSOInstanceARN": "",
+    "Parameters": {
         "IdentityStoreId": "",
+        "S3SourceBucketName": "",
+        "SNSEmailEndpointSubscription": "",
         "SSOAutmationAdminArn": "",
-        "SNSEmailEndpointSubscription": ""
+        "SSOInstanceARN": ""
     }
 }

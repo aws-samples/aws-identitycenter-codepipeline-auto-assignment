@@ -3,33 +3,26 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: Creates a Project Pipeline for the different Branches
 Parameters:
   RepositoryName:
-    Description: 'The name of CodeCommit repository, e.g. sso-automation-sample-code-repo'
+    Description: 'The name of CodeCommit repository that has been created for this solution'
     Type: String
+    Default: <Replace-With-Your-Own-Value, Eg my-sso-repo>
   RepoBranch:
     Description: The name of branch that will trigger the CodePipeline run.
     Type: String
-    Default: main
-  ArtifactBucketName:
-    Description: >-
-      S3 artifact bucket for the AWS CodePipeline, e.g.
-      sso-pipeline-artifact-bucket-<accountid>
-    Type: String
+    Default: <Replace-With-Your-Own-Value, Eg main>
   SSOMappingBucketName:
     Type: String
     Description: >-
       The same bucket name will be used in the automation and s3 stack. This S3
       bucket stores the permission sets and mapping files.
-    Default: sso-s3-automation-sample-bucket
-  SSOEnablerFunctionName:
-    Type: String
-    Default: sso-permissionses-enabler
+    Default: <Replace-With-Your-Own-Value, Eg sso-s3-automation-sample-bucket>
 
 Resources:
   PipelineArtifactStoreBucket:
     Type: 'AWS::S3::Bucket'
     DeletionPolicy: Delete
     Properties:
-      BucketName: !Sub '${ArtifactBucketName}-${AWS::AccountId}'
+      BucketName: !Sub 'sso-pipeline-artifact-bucket-${AWS::AccountId}'
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -106,7 +99,7 @@ Resources:
                 Provider: CloudFormation
               Configuration:
                 ActionMode: CREATE_UPDATE
-                StackName: SSO-Create-Secure-S3-Bucket
+                StackName: SSO-S3-Bucket-Stack
                 Capabilities: CAPABILITY_IAM
                 TemplateConfiguration: SourceArtifacts::sso-s3-parameters.json
                 TemplatePath: SourceArtifacts::sso-s3-bucket.template
@@ -137,7 +130,7 @@ Resources:
                 - Name: SourceArtifacts
               Configuration:
                 ActionMode: CREATE_UPDATE
-                StackName: SSO-Automation-Sample
+                StackName: SSO-Automation-Stack
                 Capabilities: 'CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND'
                 TemplateConfiguration: SourceArtifacts::sso-automation-parameters.json
                 TemplatePath: SourceArtifacts::sso-automation.template
@@ -172,7 +165,7 @@ Resources:
                 Provider: Lambda
                 Version: '1'
               Configuration:
-                FunctionName: !Ref SSOEnablerFunctionName
+                FunctionName: "sso-permissionses-enabler"
               RunOrder: 2
   CodePipelineServiceRole:
     Type: 'AWS::IAM::Role'
@@ -281,7 +274,7 @@ Resources:
   CodeBuildRole:
     Type: 'AWS::IAM::Role'
     Properties:
-      RoleName: SSOSamplePipelineCodeBuildRole
+      RoleName: SSOAutoPipelineCodeBuildRole
       AssumeRolePolicyDocument:
         Statement:
           - Action:

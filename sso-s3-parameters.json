@@ -1,8 +1,7 @@
 {
-    "Parameters": 
-    {
-        "S3SourceBucketName": "",
+    "Parameters": {
         "OrganizationId": "",
+        "S3SourceBucketName": "",
         "SSOAutmationAdminArn": "",
         "SSOKMSAdminArn": ""
     }
