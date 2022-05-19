@@ -3,7 +3,7 @@
         "IdentityStoreId": "",
         "S3SourceBucketName": "",
         "SNSEmailEndpointSubscription": "",
-        "SSOAutmationAdminArn": "",
+        "SSOAutomationAdminArn": "",
         "SSOInstanceARN": ""
     }
 }
