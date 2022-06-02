@@ -10,27 +10,33 @@ AWS SSO requires the [AWS Organizations service](https://console.aws.amazon.com/
  - Use AWS CodeCommit to securely source control your own SSO code repository,Utilize CodePipeline to create and update CloudFormation stacks of SSO and other AWS services. 
     - The AWS CodePipeline will first deploy CloudFormation stacks to create a security S3 bucket, automation Lambda functions and other AWS resources.
     - Once the CloudFormation stack is completed, CodePipeline syncs all the mapping files to a Secure S3 bucket
-    - Pipeline invokes the Lambda to create SSO resources by referring the JSON file in the s3 bucket.
+    - Pipeline invokes the Lambda to create SSO resources by referring the JSON files in the s3 bucket.
 ## Solution Instruction
 
 ## Prerequisite 
-1. Make sure [S3 Data event](https://docs.aws.amazon.com/awscloudtrail/latest/userguide/logging-data-events-with-cloudtrail.html) is enabled for SSO source S3 bucket in account's CloudTrail service.
+1. AWS Organizations and SSO are enabled.
+2. [S3 Data event](https://docs.aws.amazon.com/awscloudtrail/latest/userguide/logging-data-events-with-cloudtrail.html) is enabled for SSO source S3 bucket in account's CloudTrail service.
     - Because this solution uses AWS S3 Object-level API to trigger the lambda automation and those Data events are enabled by default. [Additional charges apply](https://aws.amazon.com/cloudtrail/pricing/)
     
 
 ### How to implement this solution in Organization primary account:
-
-1. In your AWS Organization primary account, use the sso-codepipeline-stack.template cloudformation template to provision the AWS Code Pipeline and related CICD resources in the same region that SSO service is enabled. Modify the CloudFormation template based on your accounts' information.
-2. Create an AWS CodeCommit repository and make sure the name of CodeCommit repository matches the value of "RepositoryName" parameter in your sso-codepipeline-stack.template.
-3. Update the CloudFormation parameters in "sso-automation-parameters.json" and "sso-s3-parameters.json" files.
-4. Create your own  permission sets json definition files as well as the account assignment "global-mapping.json" and "target-mapping.json" files.
-5. Push the following files to your CodeCommit repository:
+1. Create an AWS CodeCommit repository.
+    - The name of CodeCommit repository will be used when we create pipeline with sso-codepipeline-stack.template.
+2. In your AWS Organization primary account, use the sso-codepipeline-stack.template cloudformation template to provision the AWS Code Pipeline and related CICD resources in the same region that SSO service is enabled. 
+3. Specify parameter values in *sso-stacks-parameters.json* file. Those parameters will be used by the CodePipeline to create other 2 CloudFormation stacks.
+    - The value of *"S3SourceBucketName"* parameter are used by both sso-codepipeline-stack.template and sso-stacks-parameters.json.
+4. Create your own  permission sets json defination files  as well as the account assignment defination file "global-mapping.json" and "target-mapping.json".
+5. Push the following files to your CodeCommit repository, e.g. Linux tree structure:
 ```
+.
 ├── LICENSE
 ├── README.md
+├── diagram
+│   └── architecture_diagram.png
 ├── src
 │   ├── codebuild
 │   │   ├── buildspec-mapping.yml
+│   │   ├── buildspec-param.yml
 │   │   └── buildspec-zipfiles.yml
 │   └── lambda-code
 │       ├── sso-auto-assign
@@ -39,11 +45,10 @@ AWS SSO requires the [AWS Organizations service](https://console.aws.amazon.com/
 │       └── sso-auto-permissionsets
 │           ├── auto-permissionsets.py
 │           └── cfnresponse.py
-├── sso-automation-parameters.json
 ├── sso-automation.template
-├── sso-s3-bucket.template
-├── sso-s3-parameters.json
 ├── sso-codepipeline-stack.template
+├── sso-s3-bucket.template
+└── sso-stacks-parameters.json
 └── sso-mapping-info
     ├── global-mapping.json
     └── target-mapping.json
@@ -52,9 +57,8 @@ AWS SSO requires the [AWS Organizations service](https://console.aws.amazon.com/
         └── example-2.json
         └── ...
         └── example-99.json
-
 ```
-6. The pipeline will automatically create 2 new CloudFormation stacks in your account and upload your SSO permission and mapping files to a centralized S3 bucket. The non-default parameters of sso-s3-bucket.template and sso-automation.template are defined in sso-s3-parameters.json and sso-automation-parameters.json
+6. The pipeline will automatically create 2 new CloudFormation stacks *SSO-S3-Bucket-Stack* and *SSO-Automation-Stack* in your account and upload your SSO permission and mapping files to a centralized S3 bucket. The non-default parameters are specified in ssso-stacks-parameters.json file.
 7. The 'ReviewAndExecute' stage needs manual approval before the Pipeline invoke the Lambda function. Once the pipeline is completed, verify the permission sets and account mapping on the AWS SSO service console.
 
 ### Architecture Diagram
@@ -62,8 +66,8 @@ AWS SSO requires the [AWS Organizations service](https://console.aws.amazon.com/
   ![Image of SSO_Solution_Diagram](diagram/architecture_diagram.png)
 
 ### This solution covers the following scenarios:
-- If any change had been made through another approach without updating JSON mapping files in the source, such as a bitbucket, will this solution be able to detect and fix those drifts? 
-    -   A: Yes. The automation will use the mapping definitions (synchronized from bitbucket repository) as the single source of truth(SSOT). When the lambda automation function runs, it compares the information in loaded mapping definitions and assignments in the current environment. So it's able to find and address the drifts by re-provisioning the missing assignments and removing the additional assignments from AWS SSO service.
+- If any change had been made through another approach without updating JSON mapping files in the source, such as deleting a permission set, will this solution be able to detect and fix those drifts? 
+    -   A: Yes. The automation will use the mapping definitions in the s3 bucket as the single source of truth(SSOT). When the lambda automation function runs, it compares the information in loaded mapping definitions and assignments in the current environment. So it's able to find and address the drifts by re-provisioning the missing assignments and removing the additional assignments from AWS SSO service.
 
     The following s3 bucket policy will block all PutObject/DeleteObject actions to this SSO s3 bucket, Except the privileged sso automation role. This ensures no one other than privileged automation pipeline role is able to change the content of the mapping definition file in s3 bucket. 
 ```
@@ -159,8 +163,8 @@ These 2 event rules will trigger the SSO lambda function when AWS detects manual
 1. Example of permission-set file (random account ids):
 ```
 {
-    "Name": "1-global-admin",
-    "Description": "1-global-admin",
+    "Name": "1-example-admin",
+    "Description": "1-example-admin",
     "Tags": [
         {
             "Key": "sso-solution",
@@ -183,14 +187,14 @@ These 2 event rules will trigger the SSO lambda function when AWS detects manual
     {
         "GlobalGroupName": "Example_1-global-admin",
         "PermissionSetName": [
-            "1-global-admin"
+            "1-example-admin"
         ],
         "TargetAccountid": "Global"
     },
     {
         "GlobalGroupName": "Example_2-global-reader",
         "PermissionSetName": [
-            "2-global-reader"
+            "2-example-readonly"
         ],
         "TargetAccountid": "Global"
     },
@@ -223,25 +227,20 @@ These 2 event rules will trigger the SSO lambda function when AWS detects manual
 ]
 ```
 
+## Cleanup Steps
+- **Tearing down SSO resources could interrupt your access to AWS accounts.** Please make sure you have other IAM roles or users to login the accounts. The following steps will only remove the resources that provisioned by this solution. You will need to manually remove other permission sets or SSO assigments that are created outside this automation.
+    1. Replace all the mapping information with an empty list "[]" in  global-mapping.json and target-mapping.json files. 
+    Then re-run the pipeline to let lambda remove all the SSO assignments.
+    2. Delete all the permission set JSON files in the "permissions-set" folder
+    Then re-run the pipeline to automatically remove all permission sets.
+    3. Delete CloudFormation stack that was created with sso-automation.template.
+    4. Delete CloudFormation stack that was created with sso-s3-bucke.template
+    5. Delete CloudFormation stack that was created with code-pipeline-stack.template
+
 ## Troubleshoot
 1. For the issue with AWS CloudFormation stack, you can view the error message in the stack events and refer to [Troubleshooting CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/troubleshooting.html).
 2. For AWS CodePipeline issue, you can review the error messages on the CodePipeline console. For IAM related issue, please check [Troubleshooting AWS CodePipeline identity and access](https://docs.aws.amazon.com/codepipeline/latest/userguide/security_iam_troubleshoot.html).
 3. The default log groups for the automation lambda functions are */aws/lambda/sso-permissionses-enabler*, */aws/lambda/sso-auto-assignment-enabler* and  */aws/lambda/sso-alert-SNSnotification*.
-
-## Cleanup Step
-#### NOTE. Tearing down SSO could interrupt the access to your AWS accounts. Please make sure you have other IAM roles or users to login the accounts.  
----
-1. Replace all the mapping information with an empty list "[]" in global-mapping.json and target-mapping.json files. Then re-run the pipeline to automatically remove all the SSO assignments.
-```
-[]
-```
-2. Delete all the permission set JSON files in the "permissions-set" folder
-Then re-run the pipeline to automatically remove all permission sets.
-3. Delete CloudFormation stack that was created using sso-automation.template
-4. Delete CloudFormation stack that was created using sso-s3-bucke.template
-5. Delete CloudFormation stack that was created using code-pipeline-stack.template
-
-The above steps will only remove the resources that provisioned by this solution. You may need to manually remove other permission sets or SSO assigments that are created outside this automation.
 
 ---
 ## License

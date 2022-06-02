@@ -1,0 +1,18 @@
+version: 0.2
+env:
+  git-credential-helper: yes
+phases:
+  build:
+    commands:
+      - echo "Create CloudFormation Parameter Files."
+      - pwd
+      - sudo apt install -y jq
+      - jq "del(.Parameters.OrganizationId, .Parameters.SSOKMSAdminArn)" sso-stacks-parameters.json > sso-automation-parameters.json
+      - jq "del(.Parameters.IdentityStoreId, .Parameters.SNSEmailEndpointSubscription, .Parameters.SSOInstanceARN)" sso-stacks-parameters.json > sso-s3-parameters.json
+      - cat sso-automation-parameters.json
+      - cat sso-s3-parameters.json
+      - echo "Process is completed"
+
+artifacts:
+  files:
+    - '**/*'

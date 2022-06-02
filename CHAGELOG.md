@@ -4,8 +4,12 @@
 
 
 # CHANGELOG
-
-## April  25
+## Jun 1
+- New feature update:
+    - added a new codebuild stage to create CFN parameter files from single input JSON file.
+    - updated pipeline stack template and readme file
+    - created new buildspec and 
+ ## April  25
 - Use CFN configuration file to define the stack parameters.
 - Create variables for buildspec projects
 ## April  20
