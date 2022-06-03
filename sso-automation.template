@@ -16,7 +16,7 @@ Parameters:
     Description: The target mapping json file name. You can use the default value.
     Type: String
     Default: target-mapping.json
-  S3SourceBucketName:
+  SSOMappingBucketName:
     Description: >-
       The S3 bucket that stores the lambda code as well as permission set and
       mapping definition. It's the same name that is used in
@@ -54,13 +54,13 @@ Resources:
       FunctionName: sso-permissionses-enabler
       Handler: auto-permissionsets.lambda_handler
       Code:
-        S3Bucket: !Ref S3SourceBucketName
+        S3Bucket: !Ref SSOMappingBucketName
         S3Key: !Ref   PermissionSetsLambdaZipFileName
       Runtime: "python3.9"
       Environment:
         Variables:
           SSO_InstanceArn: !Ref SSOInstanceARN
-          SSO_S3_BucketName: !Ref S3SourceBucketName        
+          SSO_S3_BucketName: !Ref SSOMappingBucketName        
           SNS_Topic_Name:  'sso-automation-topic'
           Lambda_Region: !Ref "AWS::Region"
       MemorySize: 256
@@ -106,12 +106,12 @@ Resources:
                   - 's3:GetObject'    
                   - 's3:PutObject'
                   - 's3:PutObjectAcl'                  
-                Resource: !Sub 'arn:aws:s3:::${S3SourceBucketName}/*'
+                Resource: !Sub 'arn:aws:s3:::${SSOMappingBucketName}/*'
               - Sid: S3EssentialBucketAction
                 Effect: Allow
                 Action:
                   - 's3:ListBucket'
-                Resource: !Sub 'arn:aws:s3:::${S3SourceBucketName}'
+                Resource: !Sub 'arn:aws:s3:::${SSOMappingBucketName}'
               - Sid: KMSEssentialActions
                 Effect: Allow
                 Action:
@@ -133,14 +133,14 @@ Resources:
       FunctionName: sso-auto-assignment-enabler
       Handler: auto-assignment.lambda_handler
       Code:
-        S3Bucket: !Ref S3SourceBucketName
+        S3Bucket: !Ref SSOMappingBucketName
         S3Key: !Ref AssignmentLambdaZipFileName
       Runtime: "python3.9"
       Environment:
         Variables:
           SSO_InstanceArn: !Ref SSOInstanceARN
           IdentityStore_Id: !Ref IdentityStoreId
-          SSO_S3_BucketName: !Ref S3SourceBucketName
+          SSO_S3_BucketName: !Ref SSOMappingBucketName
           GlobalFileName: !Ref GlobalSSOGroupMappingFileName
           TargetFileName: !Ref TargetSSOGroupMappingFileName
           Lambda_Region: !Ref "AWS::Region"
@@ -169,32 +169,33 @@ Resources:
               - Sid: EssentialActions
                 Effect: Allow
                 Action:
+                  - 'codepipeline:PutJobFailureResult'
+                  - 'codepipeline:PutJobSuccessResult'
+                  - 'iam:AttachRolePolicy'
+                  - 'iam:CreateRole'
+                  - 'iam:CreateSAMLProvider'
+                  - 'iam:GetRole'
+                  - 'iam:GetSAMLProvider'
+                  - 'iam:ListAttachedRolePolicies'  
+                  - 'iam:ListRolePolicies'
+                  - 'iam:PutRolePolicy'
+                  - 'identitystore:ListGroups'
+                  - 'logs:CreateLogDelivery'
                   - 'logs:CreateLogGroup'
                   - 'logs:CreateLogStream'
-                  - 'logs:PutLogEvents'
+                  - 'logs:DeleteLogDelivery'
                   - 'logs:DescribeLogGroups'
                   - 'logs:DescribeLogStreams'
-                  - 'logs:CreateLogDelivery'
-                  - 'logs:DeleteLogDelivery'
+                  - 'logs:PutLogEvents'
+                  - 'organizations:ListAccounts'
+                  - 'ssm:GetParameter'    
                   - 'sso:CreateAccountAssignment'
+                  - 'sso:DeleteAccountAssignment'
+                  - 'sso:DescribePermissionSet'
+                  - 'sso:ListAccountAssignments'
                   - 'sso:ListPermissionSets'
                   - 'sso:ListTagsForResource'
-                  - 'sso:DeleteAccountAssignment'
-                  - 'identitystore:ListGroups'
-                  - 'sso:DescribePermissionSet'
                   - 'sso:UpdateSSOConfiguration'
-                  - 'sso:ListAccountAssignments'
-                  - 'organizations:ListAccounts'
-                  - 'iam:GetSAMLProvider'
-                  - 'iam:ListRolePolicies'
-                  - 'iam:CreateRole'
-                  - 'iam:AttachRolePolicy'
-                  - 'iam:GetRole'
-                  - 'iam:ListAttachedRolePolicies'  
-                  - 'iam:PutRolePolicy'
-                  - 'ssm:GetParameter'    
-                  - 'codepipeline:PutJobSuccessResult'
-                  - 'codepipeline:PutJobFailureResult'
                 Resource: '*'
               - Sid: S3EssentialActions
                 Effect: Allow
@@ -202,7 +203,7 @@ Resources:
                   - 's3:GetObject'       
                   - 's3:PutObject'
                   - 's3:PutObjectAcl'                  
-                Resource: !Sub 'arn:aws:s3:::${S3SourceBucketName}/*'
+                Resource: !Sub 'arn:aws:s3:::${SSOMappingBucketName}/*'
               - Sid: KMSEssentialActions
                 Effect: Allow
                 Action:

@@ -5,7 +5,7 @@ Description: >-
   solution. The s3 bucket stores SSO permission sets and
   assignment mapping files and lambda zip files.
 Parameters:
-  S3SourceBucketName:
+  SSOMappingBucketName:
     Type: String
     Description: >-
       The S3 bucket that stores the lambda code as well as permission set and
@@ -30,7 +30,7 @@ Resources:
     Type: AWS::S3::Bucket
     DeletionPolicy: Delete
     Properties:
-      BucketName: !Ref S3SourceBucketName 
+      BucketName: !Ref SSOMappingBucketName 
       VersioningConfiguration: 
         Status: Enabled
       BucketEncryption:
