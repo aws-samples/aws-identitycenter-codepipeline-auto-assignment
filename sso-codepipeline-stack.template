@@ -234,10 +234,10 @@ Resources:
                 Resource: '*'
               - Effect: Allow
                 Action:
+                  - 'cloudformation:*'
                   - 'cloudwatch:*'
                   - 's3:*'
                   - 'sns:*'
-                  - 'cloudformation:*'
                 Resource: '*'
 
 #
@@ -334,20 +334,20 @@ Resources:
               - Effect: Allow
                 Action:
                   - 'cloudwatch:*'
-                  - 'sns:*'
-                  - 's3:*'
-                  - 'kms:*'
-                  - 'logs:*'
                   - 'events:*'
-                  - 'iam:GetRole'
                   - 'iam:CreateRole'
-                  - 'iam:DeleteRolePolicy'
                   - 'iam:DeleteRole'
-                  - 'iam:PutRolePolicy'
+                  - 'iam:DeleteRolePolicy'
+                  - 'iam:GetRole'
                   - 'iam:PassRole'
-                  - 'lambda:GetFunction'
-                  - 'lambda:DeleteFunction'
-                  - 'lambda:CreateFunction'
+                  - 'iam:PutRolePolicy'
+                  - 'kms:*'
                   - 'lambda:AddPermission'
+                  - 'lambda:CreateFunction'
+                  - 'lambda:DeleteFunction'
+                  - 'lambda:GetFunction'
                   - 'lambda:RemovePermission'
+                  - 'logs:*'
+                  - 's3:*'
+                  - 'sns:*'
                 Resource: '*'

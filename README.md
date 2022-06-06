@@ -24,7 +24,7 @@ AWS SSO requires the [AWS Organizations service](https://console.aws.amazon.com/
     - The name of CodeCommit repository will be used when we create pipeline with sso-codepipeline-stack.template.
 2. In your AWS Organization primary account, use the sso-codepipeline-stack.template cloudformation template to provision the AWS Code Pipeline and related CICD resources in the same region that SSO service is enabled. 
 3. Specify parameter values in *sso-stacks-parameters.json* file. Those parameters will be used by the CodePipeline to create other 2 CloudFormation stacks.
-    - The value of *"SSOMappingBucketName"* parameter are used by both sso-codepipeline-stack.template and sso-stacks-parameters.json.
+    - The value of *"SSOMappingBucketName"* parameter is used by both sso-codepipeline-stack.template and sso-stacks-parameters.json.
 4. Create your own  permission sets json defination files  as well as the account assignment defination file "global-mapping.json" and "target-mapping.json".
 5. Push the following files to your CodeCommit repository, e.g. Linux tree structure:
 ```

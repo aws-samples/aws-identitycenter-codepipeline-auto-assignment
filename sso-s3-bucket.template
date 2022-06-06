@@ -151,33 +151,33 @@ Resources:
                 - !Ref SSOAutomationAdminArn
                 - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOAutoPipelineCodeBuildRole"
             Action: 
+              - "kms:CancelKeyDeletion"
               - "kms:Create*"
+              - "kms:Delete*"
               - "kms:Describe*"
+              - "kms:Disable*"
               - "kms:Enable*"
               - "kms:GenerateDataKey"
+              - "kms:Get*"
               - "kms:List*"
               - "kms:Put*"
               - "kms:Revoke*"
-              - "kms:Disable*"
-              - "kms:Get*"
-              - "kms:Delete*"
+              - "kms:ScheduleKeyDeletion"
               - "kms:TagResource"
               - "kms:UntagResource"
-              - "kms:ScheduleKeyDeletion"
-              - "kms:CancelKeyDeletion"
             Resource: "*"
           - Sid: Lambda Permissions
             Effect: Allow
             Principal:
               AWS: "*"
             Action: 
-              - "kms:Describe*"
-              - "kms:List*"
-              - "kms:Get*"
-              - "kms:Encrypt"
               - "kms:Decrypt"
-              - "kms:ReEncrypt*"
+              - "kms:Describe*"
+              - "kms:Encrypt"
               - "kms:GenerateDataKey"
+              - "kms:Get*"
+              - "kms:List*"
+              - "kms:ReEncrypt*"
             Resource: "*" 
             Condition:
               ForAnyValue:ArnLike:
@@ -201,12 +201,12 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: 
+              - "kms:Decrypt"
               - "kms:DescribeKey"
               - "kms:Encrypt"
-              - "kms:Decrypt"
-              - "kms:ReEncrypt*"
               - "kms:GenerateDataKey"
               - "kms:GenerateDataKeyWithoutPlaintext"
+              - "kms:ReEncrypt*"
             Resource: "*"
             Condition:
               StringEquals:
