@@ -1,6 +1,6 @@
 ---
 AWSTemplateFormatVersion: 2010-09-09
-Description: Creates a Project Pipeline for the different Branches
+Description: "This template creates AWS CodePipeline and other CICD resources for SSO automation solution (qs-1t52at7re)"
 Parameters:
   RepositoryName:
     Description: 'The name of CodeCommit repository that has been created for this solution'
