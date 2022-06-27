@@ -45,7 +45,7 @@ def get_all_permission_sets(pipeline_id):
                 InstanceArn=sso_instance_arn,
                 PermissionSetArn=perm_set_arn
             )
-            sleep(0.2)  # Aviod hitting API limit.
+            sleep(0.1)  # Aviod hitting API limit.
             description = describe_perm_set['PermissionSet']['Description']
             perm_set_name = describe_perm_set['PermissionSet']['Name']
             perm_set_arn = describe_perm_set['PermissionSet']['PermissionSetArn']
@@ -103,7 +103,7 @@ def create_permission_set(name, desc, tags, pipeline_id):
             InstanceArn=sso_instance_arn,
             Tags=tags
         )
-        sleep(0.2)  # Aviod hitting API limit.
+        sleep(0.1)  # Aviod hitting API limit.
     except sso_admin.exceptions.ThrottlingException as error:
         logger.warning("%sHit CreatePermissionSet API limits. Sleep 5s.", error)
         sleep(5)
@@ -130,7 +130,7 @@ def add_managed_policy_to_perm_set(perm_set_arn, managed_policy_arn,
             ManagedPolicyArn=managed_policy_arn
         )
         logger.info('Managed Policy %s added to %s', managed_policy_arn, perm_set_arn)
-        sleep(0.2)  # Aviod hitting API limit.
+        sleep(0.1)  # Aviod hitting API limit.
 
     except sso_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit API limits. Sleep 2s.", error)
@@ -157,7 +157,7 @@ def remove_managed_policy_from_perm_set(perm_set_arn, managed_policy_arn, pipeli
         )
         logger.info('Managed Policy %s removed \
                     from %s', managed_policy_arn, perm_set_arn)
-        sleep(0.2)  #Avoid hitting API limit.
+        sleep(0.1)  #Avoid hitting API limit.
     except sso_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit API limits. Sleep 2s...", error)
         sleep(2)
@@ -188,7 +188,7 @@ def sync_managed_policies(local_managed_policies, perm_set_arn, pipeline_id):
             InstanceArn=sso_instance_arn,
             PermissionSetArn=perm_set_arn
         )
-        sleep(0.2)  # Aviod hitting API limit.
+        sleep(0.1)  # Aviod hitting API limit.
 
         # Populate arrays for Managed Policy tracking.
         for aws_managed_policy in list_managed_policies['AttachedManagedPolicies']:
@@ -238,7 +238,7 @@ def remove_inline_policies(perm_set_arn, pipeline_id):
                 PermissionSetArn=perm_set_arn
             )
             logger.info('Removed inline policiy for %s', perm_set_arn)
-            sleep(0.2)  # Aviod hitting API limit.
+            sleep(0.1)  # Aviod hitting API limit.
     except sso_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit SSO API limit. Sleep 5s..", error)
         sleep(5)
@@ -264,7 +264,7 @@ def sync_inline_policies(local_inline_policy, perm_set_arn, pipeline_id):
                 PermissionSetArn=perm_set_arn,
                 InlinePolicy=json.dumps(local_inline_policy)
             )
-            sleep(0.2)  # Aviod hitting API limit.
+            sleep(0.1)  # Aviod hitting API limit.
         except sso_admin.exceptions.ThrottlingException as error:
             logger.warning("%s.Hit SSO API limit. Sleep 5s...", error)
             sleep(5)
@@ -289,7 +289,7 @@ def delete_permission_set(perm_set_arn, perm_set_name, pipeline_id):
             PermissionSetArn=perm_set_arn
         )
         logger.info('%s Permission set deleted', perm_set_name)
-        sleep(0.2)  # Aviod hitting API limit.
+        sleep(0.1)  # Aviod hitting API limit.
     except sso_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit delete_permission_set API limits. Sleep 5s..", error)
         sleep(5)
@@ -314,7 +314,7 @@ def sync_description(perm_set_arn, local_desc, aws_desc):
                 PermissionSetArn=perm_set_arn,
                 Description=local_desc
             )
-            sleep(0.2)  # Aviod hitting API limit.
+            sleep(0.1)  # Aviod hitting API limit.
         except ClientError as error:
             logger.warning("%s", error)
 
@@ -483,7 +483,7 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn, pipeline_id):
                 AccountId=account,
                 ProvisioningStatus='LATEST_PERMISSION_SET_NOT_PROVISIONED'
             )
-            sleep(0.2)  # Aviod hitting API limit.
+            sleep(0.1)  # Aviod hitting API limit.
             if outdated_perm_sets['PermissionSets']:
                 outdated_accounts.append(outdated_perm_sets['PermissionSets'])
         except sso_admin.exceptions.ThrottlingException as error:
@@ -511,7 +511,7 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn, pipeline_id):
                 PermissionSetArn=perm_set_arn,
                 TargetType='ALL_PROVISIONED_ACCOUNTS'
             )
-            sleep(0.2)  # Aviod hitting API limit.
+            sleep(0.1)  # Aviod hitting API limit.
 
             # Find any IN_PROGRESS provisioning operations.
             get_provisionsing_status = sso_admin.list_permission_set_provisioning_status(

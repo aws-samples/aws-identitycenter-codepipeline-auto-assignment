@@ -2,7 +2,6 @@
 - CodePipeline will use AWS Code commit as the source for now.
 - Split the pipeline stack and the pipeline resource itself.
 
-
 # CHANGELOG
 ## Jun 26
 - Reformatted and improved the Lambda Python code
