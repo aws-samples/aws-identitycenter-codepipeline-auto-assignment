@@ -240,7 +240,7 @@ These 2 event rules will trigger the SSO lambda function when AWS detects manual
 ## Troubleshoot
 1. For the issue with AWS CloudFormation stack, you can view the error message in the stack events and refer to [Troubleshooting CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/troubleshooting.html).
 2. For AWS CodePipeline issue, you can review the error messages on the CodePipeline console. For IAM related issue, please check [Troubleshooting AWS CodePipeline identity and access](https://docs.aws.amazon.com/codepipeline/latest/userguide/security_iam_troubleshoot.html).
-3. The default log groups for the automation lambda functions are */aws/lambda/sso-permissionses-enabler*, */aws/lambda/sso-auto-assignment-enabler* and  */aws/lambda/sso-alert-SNSnotification*.
+3. The default log groups for the automation lambda functions are */aws/lambda/sso-permissionsets-enabler*, */aws/lambda/sso-auto-assignment-enabler* and  */aws/lambda/sso-alert-SNSnotification*.
 
 ---
 ## License

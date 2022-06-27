@@ -180,7 +180,7 @@ Resources:
                 Provider: Lambda
                 Version: '1'
               Configuration:
-                FunctionName: "sso-permissionses-enabler"
+                FunctionName: "sso-permissionsets-enabler"
               RunOrder: 2
 
   CodePipelineServiceRole:
@@ -334,7 +334,11 @@ Resources:
               - Effect: Allow
                 Action:
                   - 'cloudwatch:*'
-                  - 'events:*'
+                  - 'events:DeleteRule'
+                  - 'events:DescribeRule'
+                  - 'events:PutRule'
+                  - 'events:PutTargets'
+                  - 'events:RemoveTargets'
                   - 'iam:CreateRole'
                   - 'iam:DeleteRole'
                   - 'iam:DeleteRolePolicy'
@@ -347,6 +351,7 @@ Resources:
                   - 'lambda:DeleteFunction'
                   - 'lambda:GetFunction'
                   - 'lambda:RemovePermission'
+                  - 'lambda:UpdateFunction*'
                   - 'logs:*'
                   - 's3:*'
                   - 'sns:*'

@@ -4,6 +4,10 @@
 
 
 # CHANGELOG
+## Jun 26
+- Reformatted and improved the Lambda Python code
+- Fix CloudFormation typo
+
 ## Jun 1
 - New feature update:
     - added a new codebuild stage to create CFN parameter files from single input JSON file.

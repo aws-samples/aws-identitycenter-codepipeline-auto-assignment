@@ -3,7 +3,7 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: >-
   Cloudformation template creating S3 and KMS resources for SSO automation
   solution. The s3 bucket stores SSO permission sets and
-  assignment mapping files and lambda zip files.
+  assignment mapping files and lambda zip files (qs-1t52at7re).
 Parameters:
   SSOMappingBucketName:
     Type: String
@@ -171,13 +171,13 @@ Resources:
             Principal:
               AWS: "*"
             Action: 
-              - "kms:Decrypt"
               - "kms:Describe*"
-              - "kms:Encrypt"
-              - "kms:GenerateDataKey"
-              - "kms:Get*"
               - "kms:List*"
+              - "kms:Get*"
+              - "kms:Encrypt"
+              - "kms:Decrypt"
               - "kms:ReEncrypt*"
+              - "kms:GenerateDataKey"
             Resource: "*" 
             Condition:
               ForAnyValue:ArnLike:

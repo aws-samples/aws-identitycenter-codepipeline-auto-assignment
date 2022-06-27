@@ -1,6 +1,6 @@
 ---
 AWSTemplateFormatVersion: 2010-09-09
-Description: CloudFormation template creating resources for SSO automation solution.
+Description: CloudFormation template creating resources for SSO automation solution (qs-1t52at7re).
 Parameters:
   SSOInstanceARN:
     Type: String
@@ -51,7 +51,7 @@ Resources:
   SSOPermissionSetAutomationLambda:
     Type: 'AWS::Lambda::Function'
     Properties:
-      FunctionName: sso-permissionses-enabler
+      FunctionName: sso-permissionsets-enabler
       Handler: auto-permissionsets.lambda_handler
       Code:
         S3Bucket: !Ref SSOMappingBucketName
@@ -89,16 +89,16 @@ Resources:
                 Effect: Allow
                 Action:
                   - 'sso:*'               
+                  - 'codepipeline:PutJobFailureResult'                     
+                  - 'codepipeline:PutJobSuccessResult'
+                  - 'logs:CreateLogDelivery'
                   - 'logs:CreateLogGroup'
                   - 'logs:CreateLogStream'
-                  - 'logs:PutLogEvents'
+                  - 'logs:DeleteLogDelivery'
                   - 'logs:DescribeLogGroups'
                   - 'logs:DescribeLogStreams'
-                  - 'logs:CreateLogDelivery'
-                  - 'logs:DeleteLogDelivery'
+                  - 'logs:PutLogEvents'
                   - 'ssm:GetParameter'  
-                  - 'codepipeline:PutJobSuccessResult'
-                  - 'codepipeline:PutJobFailureResult'                     
                 Resource: '*'
               - Sid: S3EssentialObjectActions
                 Effect: Allow
@@ -145,7 +145,7 @@ Resources:
           TargetFileName: !Ref TargetSSOGroupMappingFileName
           Lambda_Region: !Ref "AWS::Region"
       MemorySize: 256
-      Timeout: 360
+      Timeout: 900
       Role: !GetAtt
         - SSOAssignmentAutomationLambdaRole
         - Arn
@@ -250,12 +250,12 @@ Resources:
           eventSource:
             - sso.amazonaws.com
           eventName:
-            - AttachManagedPolicyToPermissionSet
             - AssociateProfile
+            - AttachManagedPolicyToPermissionSet
             - CreateAccountAssignment
-            - CreateProfile
             - CreateInstanceAccessControlAttributeConfiguration
             - CreatePermissionSet
+            - CreateProfile
             - DeleteAccountAssignment
             - DeleteInlinePolicyFromPermissionSet
             - DeleteInstanceAccessControlAttributeConfiguration
@@ -265,11 +265,11 @@ Resources:
             - ProvisionPermissionSet
             - PutInlinePolicyToPermissionSet
             - PutPermissionsPolicy
+            - TagResource
+            - UntagResource
             - UpdatePermissionSet
             - UpdateProfile
             - UpdateSSOConfiguration
-            - TagResource
-            - UntagResource
           userIdentity:
             sessionContext:
               sessionIssuer:
@@ -357,7 +357,6 @@ Resources:
         - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
           Id: "Every12Hours"
 
-
   SNSSSOManualActionAlertTopic:
     Type: AWS::SNS::Topic
     Properties:
@@ -430,13 +429,13 @@ Resources:
               - Sid: CloudWatchLog
                 Effect: Allow
                 Action:   
+                  - 'logs:CreateLogDelivery'
                   - 'logs:CreateLogGroup'
                   - 'logs:CreateLogStream'
-                  - 'logs:PutLogEvents'
+                  - 'logs:DeleteLogDelivery'            
                   - 'logs:DescribeLogGroups'
                   - 'logs:DescribeLogStreams'
-                  - 'logs:CreateLogDelivery'
-                  - 'logs:DeleteLogDelivery'            
+                  - 'logs:PutLogEvents'
                 Resource: "*"
 #  Add Lambda permission to AWS event rules
   LambdaResourcePermissionForAutoPermissionSetEvent:
