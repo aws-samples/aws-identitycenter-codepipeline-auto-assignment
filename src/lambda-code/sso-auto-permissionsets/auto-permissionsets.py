@@ -11,38 +11,38 @@ from botocore.exceptions import ClientError
 import cfnresponse
 
 runtime_region = os.environ['Lambda_Region']
-sso_bucket_name = os.environ.get('SSO_S3_BucketName')
+ic_bucket_name = os.environ.get('IC_S3_BucketName')
 pipeline = boto3.client('codepipeline',region_name=runtime_region)
 s3 = boto3.resource('s3')
 sns_client = boto3.client('sns',region_name=runtime_region)
 sns_topic_name=os.environ.get('SNS_Topic_Name')
-sso_admin = boto3.client('sso-admin',region_name=runtime_region)
-sso_instance_arn = os.environ.get('SSO_InstanceArn')
+ic_admin = boto3.client('sso-admin',region_name=runtime_region)
+ic_instance_arn = os.environ.get('IC_InstanceArn')
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
 def get_all_permission_sets(pipeline_id):
-    """List all the permission sets for the SSO ARN"""
+    """List all the permission sets for the IAM Identity Center ARN"""
     try:
         permission_set_name_and_arn = {}
-        response = sso_admin.list_permission_sets(
-            InstanceArn=sso_instance_arn,
+        response = ic_admin.list_permission_sets(
+            InstanceArn=ic_instance_arn,
             MaxResults=100
         )
-        all_sso_perm_sets_arns = response['PermissionSets']
+        all_perm_sets_arns = response['PermissionSets']
         while 'NextToken' in response:
-            response = sso_admin.list_permission_sets(
-                InstanceArn=sso_instance_arn,
+            response = ic_admin.list_permission_sets(
+                InstanceArn=ic_instance_arn,
                 NextToken=response['NextToken'],
                 MaxResults=100
             )
-            all_sso_perm_sets_arns += response['PermissionSets']
+            all_perm_sets_arns += response['PermissionSets']
 
-        for perm_set_arn in all_sso_perm_sets_arns:
-            describe_perm_set = sso_admin.describe_permission_set(
-                InstanceArn=sso_instance_arn,
+        for perm_set_arn in all_perm_sets_arns:
+            describe_perm_set = ic_admin.describe_permission_set(
+                InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn
             )
             sleep(0.1)  # Aviod hitting API limit.
@@ -53,11 +53,11 @@ def get_all_permission_sets(pipeline_id):
                 'Arn': perm_set_arn,
                 'Description': description
                 }
-    except sso_admin.exceptions.ThrottlingException as error:
-        logger.warning("Hit SSO API limits. Sleep 5s...%s", error)
+    except ic_admin.exceptions.ThrottlingException as error:
+        logger.warning("Hit IAM Identity Center API limits. Sleep 5s...%s", error)
         sleep(5)
-    except sso_admin.exceptions.ConflictException as error:
-        logger.info("The same SSO process has been started \
+    except ic_admin.exceptions.ConflictException as error:
+        logger.info("The same IAM Identity Center process has been started \
                     in another invocation, skipping...%s", error)
         sleep(2)
     except ClientError as error:
@@ -70,7 +70,7 @@ def get_all_permission_sets(pipeline_id):
 
 
 def get_all_json_files(bucket_name, pipeline_id):
-    """Download all the JSON files from SSO S3 bucket"""
+    """Download all the JSON files from IAM Identity Center S3 bucket"""
     file_contents = {}
     my_bucket = s3.Bucket(bucket_name)
     try:
@@ -95,20 +95,20 @@ def get_all_json_files(bucket_name, pipeline_id):
 
 
 def create_permission_set(name, desc, tags, pipeline_id):
-    """Create a permission set in AWS SSO"""
+    """Create a permission set in AWS IAM Identity Center"""
     try:
-        response = sso_admin.create_permission_set(
+        response = ic_admin.create_permission_set(
             Name=name,
             Description=desc,
-            InstanceArn=sso_instance_arn,
+            InstanceArn=ic_instance_arn,
             Tags=tags
         )
         sleep(0.1)  # Aviod hitting API limit.
-    except sso_admin.exceptions.ThrottlingException as error:
+    except ic_admin.exceptions.ThrottlingException as error:
         logger.warning("%sHit CreatePermissionSet API limits. Sleep 5s.", error)
         sleep(5)
-    except sso_admin.exceptions.ConflictException as error:
-        logger.info("%sThe same SSO process has been \
+    except ic_admin.exceptions.ConflictException as error:
+        logger.info("%sThe same IAM Identity Center process has been \
                     started in another invocation, skipping...", error)
         sleep(2)
     except ClientError as error:
@@ -124,19 +124,19 @@ def add_managed_policy_to_perm_set(perm_set_arn, managed_policy_arn,
                                    pipeline_id):
     """Attach a managed policy to a permission set"""
     try:
-        attach_managed_policy = sso_admin.attach_managed_policy_to_permission_set(
-            InstanceArn=sso_instance_arn,
+        attach_managed_policy = ic_admin.attach_managed_policy_to_permission_set(
+            InstanceArn=ic_instance_arn,
             PermissionSetArn=perm_set_arn,
             ManagedPolicyArn=managed_policy_arn
         )
         logger.info('Managed Policy %s added to %s', managed_policy_arn, perm_set_arn)
         sleep(0.1)  # Aviod hitting API limit.
 
-    except sso_admin.exceptions.ThrottlingException as error:
+    except ic_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit API limits. Sleep 2s.", error)
         sleep(2)
-    except sso_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same SSO process has been started in \
+    except ic_admin.exceptions.ConflictException as error:
+        logger.info("%s.The same IAM Identity Center process has been started in \
                     another invocation, skipping...", error)
     except ClientError as error:
         logger.error("%s", error)
@@ -150,19 +150,19 @@ def add_managed_policy_to_perm_set(perm_set_arn, managed_policy_arn,
 def remove_managed_policy_from_perm_set(perm_set_arn, managed_policy_arn, pipeline_id):
     """Remove a managed policy from a permission set"""
     try:
-        remove_managed_policy = sso_admin.detach_managed_policy_from_permission_set(
-            InstanceArn=sso_instance_arn,
+        remove_managed_policy = ic_admin.detach_managed_policy_from_permission_set(
+            InstanceArn=ic_instance_arn,
             PermissionSetArn=perm_set_arn,
             ManagedPolicyArn=managed_policy_arn
         )
         logger.info('Managed Policy %s removed \
                     from %s', managed_policy_arn, perm_set_arn)
         sleep(0.1)  #Avoid hitting API limit.
-    except sso_admin.exceptions.ThrottlingException as error:
+    except ic_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit API limits. Sleep 2s...", error)
         sleep(2)
-    except sso_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same SSO process has been started in another invocation, skipping...", error)
+    except ic_admin.exceptions.ConflictException as error:
+        logger.info("%s.The same IAM Identity Center process has been started in another invocation, skipping...", error)
     except ClientError as error:
         logger.error("%s", error)
         pipeline.put_job_failure_result(
@@ -184,8 +184,8 @@ def sync_managed_policies(local_managed_policies, perm_set_arn, pipeline_id):
 
     # Get all the managed polcies attached to the permission set.
     try:
-        list_managed_policies = sso_admin.list_managed_policies_in_permission_set(
-            InstanceArn=sso_instance_arn,
+        list_managed_policies = ic_admin.list_managed_policies_in_permission_set(
+            InstanceArn=ic_instance_arn,
             PermissionSetArn=perm_set_arn
         )
         sleep(0.1)  # Aviod hitting API limit.
@@ -209,11 +209,11 @@ def sync_managed_policies(local_managed_policies, perm_set_arn, pipeline_id):
                 remove_managed_policy_from_perm_set(perm_set_arn,
                                                     aws_managed_attached_dict[aws_policy],
                                                     pipeline_id)
-    except sso_admin.exceptions.ThrottlingException as error:
-        logger.warning("%s.Hit SSO API limits. Sleep 5s.", error)
+    except ic_admin.exceptions.ThrottlingException as error:
+        logger.warning("%s.Hit IAM Identity Center API limits. Sleep 5s.", error)
         sleep(5)
-    except sso_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same SSO process has been started \
+    except ic_admin.exceptions.ConflictException as error:
+        logger.info("%s.The same IAM Identity Center process has been started \
                     in another invocation, skipping...", error)
         sleep(2)
     except Exception as error:
@@ -227,23 +227,23 @@ def sync_managed_policies(local_managed_policies, perm_set_arn, pipeline_id):
 def remove_inline_policies(perm_set_arn, pipeline_id):
     """Remove Inline policies from permission set if they exist"""
     try:
-        list_existing_inline = sso_admin.get_inline_policy_for_permission_set(
-            InstanceArn=sso_instance_arn,
+        list_existing_inline = ic_admin.get_inline_policy_for_permission_set(
+            InstanceArn=ic_instance_arn,
             PermissionSetArn=perm_set_arn
         )
 
         if list_existing_inline['InlinePolicy']:
-            sso_admin.delete_inline_policy_from_permission_set(
-                InstanceArn=sso_instance_arn,
+            ic_admin.delete_inline_policy_from_permission_set(
+                InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn
             )
             logger.info('Removed inline policiy for %s', perm_set_arn)
             sleep(0.1)  # Aviod hitting API limit.
-    except sso_admin.exceptions.ThrottlingException as error:
-        logger.warning("%s.Hit SSO API limit. Sleep 5s..", error)
+    except ic_admin.exceptions.ThrottlingException as error:
+        logger.warning("%s.Hit IAM Identity Center API limit. Sleep 5s..", error)
         sleep(5)
-    except sso_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same SSO process has been started \
+    except ic_admin.exceptions.ConflictException as error:
+        logger.info("%s.The same IAM Identity Center process has been started \
                     in another invocation, skipping...", error)
         sleep(2)
     except ClientError as error:
@@ -259,17 +259,17 @@ def sync_inline_policies(local_inline_policy, perm_set_arn, pipeline_id):
     if local_inline_policy:
         try:
             logger.info('Synchronizing inline policy with %s', perm_set_arn)
-            sso_admin.put_inline_policy_to_permission_set(
-                InstanceArn=sso_instance_arn,
+            ic_admin.put_inline_policy_to_permission_set(
+                InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn,
                 InlinePolicy=json.dumps(local_inline_policy)
             )
             sleep(0.1)  # Aviod hitting API limit.
-        except sso_admin.exceptions.ThrottlingException as error:
-            logger.warning("%s.Hit SSO API limit. Sleep 5s...", error)
+        except ic_admin.exceptions.ThrottlingException as error:
+            logger.warning("%s.Hit IAM Identity Center API limit. Sleep 5s...", error)
             sleep(5)
-        except sso_admin.exceptions.ConflictException as error:
-            logger.info("%s.The same SSO process has been started \
+        except ic_admin.exceptions.ConflictException as error:
+            logger.info("%s.The same IAM Identity Center process has been started \
                         in another invocation, skipping...", error)
         except ClientError as error:
             logger.warning("%s", error)
@@ -282,19 +282,19 @@ def sync_inline_policies(local_inline_policy, perm_set_arn, pipeline_id):
 
 
 def delete_permission_set(perm_set_arn, perm_set_name, pipeline_id):
-    """Delete SSO permission sets"""
+    """Delete IAM Identity Center permission sets"""
     try:
-        sso_admin.delete_permission_set(
-            InstanceArn=sso_instance_arn,
+        ic_admin.delete_permission_set(
+            InstanceArn=ic_instance_arn,
             PermissionSetArn=perm_set_arn
         )
         logger.info('%s Permission set deleted', perm_set_name)
         sleep(0.1)  # Aviod hitting API limit.
-    except sso_admin.exceptions.ThrottlingException as error:
+    except ic_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit delete_permission_set API limits. Sleep 5s..", error)
         sleep(5)
-    except sso_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same SSO process has been started \
+    except ic_admin.exceptions.ConflictException as error:
+        logger.info("%s.The same IAM Identity Center process has been started \
                     in another invocation, skipping...", error)
     except ClientError as error:
         logger.error("%s", error)
@@ -309,8 +309,8 @@ def sync_description(perm_set_arn, local_desc, aws_desc):
     if not local_desc == aws_desc:
         try:
             logger.info('Updating description for %s', perm_set_arn)
-            sso_admin.update_permission_set(
-                InstanceArn=sso_instance_arn,
+            ic_admin.update_permission_set(
+                InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn,
                 Description=local_desc
             )
@@ -322,8 +322,8 @@ def sync_description(perm_set_arn, local_desc, aws_desc):
 def tag_permission_set(local_name, local_tags, perm_set_arn):
     """Add tags to the permission sets"""
     try:
-        sso_admin.tag_resource(
-            InstanceArn=sso_instance_arn,
+        ic_admin.tag_resource(
+            InstanceArn=ic_instance_arn,
             ResourceArn=perm_set_arn,
             Tags=local_tags
         )
@@ -335,8 +335,8 @@ def tag_permission_set(local_name, local_tags, perm_set_arn):
 def remove_tag(key, perm_set_arn, local_name):
     """Remove tags from a permission set"""
     try:
-        sso_admin.untag_resource(
-            InstanceArn=sso_instance_arn,
+        ic_admin.untag_resource(
+            InstanceArn=ic_instance_arn,
             ResourceArn=perm_set_arn,
             TagKeys=[
                 key,
@@ -350,8 +350,8 @@ def remove_tag(key, perm_set_arn, local_name):
 def sync_tags(local_name, local_tags, perm_set_arn):
     """Synchronize the tags between the JSON and AWS"""
     try:
-        list_tags = sso_admin.list_tags_for_resource(
-            InstanceArn=sso_instance_arn,
+        list_tags = ic_admin.list_tags_for_resource(
+            InstanceArn=ic_instance_arn,
             ResourceArn=perm_set_arn
         )
         aws_tags = list_tags['Tags']
@@ -377,7 +377,7 @@ def sync_tags(local_name, local_tags, perm_set_arn):
                 if key not in local_tag_keys:
                     remove_tag(key, perm_set_arn, local_name)
 
-    except sso_admin.exceptions.ThrottlingException as error:
+    except ic_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit ListTags API limits. Sleep 3s...", error)
         sleep(3)
     except ClientError as error:
@@ -387,20 +387,20 @@ def sync_tags(local_name, local_tags, perm_set_arn):
 def get_accounts_by_perm_set(perm_set_arn):
     """List all the accounts for a given permission set"""
     try:
-        response = sso_admin.list_accounts_for_provisioned_permission_set(
-            InstanceArn=sso_instance_arn,
+        response = ic_admin.list_accounts_for_provisioned_permission_set(
+            InstanceArn=ic_instance_arn,
             PermissionSetArn=perm_set_arn
         )
         acct_list = response['AccountIds']
         while 'NextToken' in response:
-            response = sso_admin.list_accounts_for_provisioned_permission_set(
+            response = ic_admin.list_accounts_for_provisioned_permission_set(
                 NextToken=response['NextToken'],
-                InstanceArn=sso_instance_arn,
+                InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn
             )
             acct_list += response['AccountIds']
         logger.debug(acct_list)
-    except sso_admin.exceptions.ThrottlingException as error:
+    except ic_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit ListAccountsForProvisionedPermissionSet \
                         API limits. Sleep 5s.", error)
         sleep(5)
@@ -422,15 +422,15 @@ def deprovision_permission_set_from_accounts(perm_set_arn,
         if account_ids:
             for account in account_ids:
                 # Get all of the assignments of a permission set
-                response = sso_admin.list_account_assignments(
-                    InstanceArn=sso_instance_arn,
+                response = ic_admin.list_account_assignments(
+                    InstanceArn=ic_instance_arn,
                     AccountId=account,
                     PermissionSetArn=perm_set_arn
                 )
                 acct_assignments = response['AccountAssignments']
                 while 'NextToken' in response:
-                    sso_admin.list_account_assignments(
-                        InstanceArn=sso_instance_arn,
+                    ic_admin.list_account_assignments(
+                        InstanceArn=ic_instance_arn,
                         AccountId=account,
                         PermissionSetArn=perm_set_arn,
                         NextToken=response['NextToken']
@@ -441,8 +441,8 @@ def deprovision_permission_set_from_accounts(perm_set_arn,
                 for assignment in acct_assignments:
                     logger.info("Deleting assignment for account: %s, principal-type: %s, \
                                  principal-id: %s", account, assignment['PrincipalType'], assignment['PrincipalId'])
-                    delete_assignment = sso_admin.delete_account_assignment(
-                        InstanceArn=sso_instance_arn,
+                    delete_assignment = ic_admin.delete_account_assignment(
+                        InstanceArn=ic_instance_arn,
                         TargetId=account,
                         TargetType='AWS_ACCOUNT',
                         PermissionSetArn=perm_set_arn,
@@ -454,11 +454,11 @@ def deprovision_permission_set_from_accounts(perm_set_arn,
                     sleep(1)
         else:
             logger.info('%s is not provisioned to any accounts - deleting...', perm_set_name)
-    except sso_admin.exceptions.ThrottlingException as error:
+    except ic_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit API limits. Sleep 5s...", error)
         sleep(5)
-    except sso_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same SSO process has been started \
+    except ic_admin.exceptions.ConflictException as error:
+        logger.info("%s.The same IAM Identity Center process has been started \
                     in another invocation, skipping...", error)
         sleep(2)
     except ClientError as error:
@@ -478,19 +478,19 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn, pipeline_id):
     #   not current and populate an array if any outdated one is found.
     for account in account_ids:
         try:
-            outdated_perm_sets = sso_admin.list_permission_sets_provisioned_to_account(
-                InstanceArn=sso_instance_arn,
+            outdated_perm_sets = ic_admin.list_permission_sets_provisioned_to_account(
+                InstanceArn=ic_instance_arn,
                 AccountId=account,
                 ProvisioningStatus='LATEST_PERMISSION_SET_NOT_PROVISIONED'
             )
             sleep(0.1)  # Aviod hitting API limit.
             if outdated_perm_sets['PermissionSets']:
                 outdated_accounts.append(outdated_perm_sets['PermissionSets'])
-        except sso_admin.exceptions.ThrottlingException as error:
+        except ic_admin.exceptions.ThrottlingException as error:
             logger.warning("%s.Hit API limits. Sleep 5s...", error)
             sleep(5)
-        except sso_admin.exceptions.ConflictException as error:
-            logger.info("%sThe same SSO process has been started \
+        except ic_admin.exceptions.ConflictException as error:
+            logger.info("%sThe same IAM Identity Center process has been started \
                         in another invocation, skipping...", error)
             sleep(2)
         except ClientError as error:
@@ -506,16 +506,16 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn, pipeline_id):
         try:
             logger.info("Reprovisioning %s for the following \
                         accounts: %s", perm_set_name, account_ids)
-            sso_admin.provision_permission_set(
-                InstanceArn=sso_instance_arn,
+            ic_admin.provision_permission_set(
+                InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn,
                 TargetType='ALL_PROVISIONED_ACCOUNTS'
             )
             sleep(0.1)  # Aviod hitting API limit.
 
             # Find any IN_PROGRESS provisioning operations.
-            get_provisionsing_status = sso_admin.list_permission_set_provisioning_status(
-                InstanceArn=sso_instance_arn,
+            get_provisionsing_status = ic_admin.list_permission_set_provisioning_status(
+                InstanceArn=ic_instance_arn,
                 Filter={
                     'Status': 'IN_PROGRESS'
                 }
@@ -524,8 +524,8 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn, pipeline_id):
             complete = 'false'
             for status in get_provisionsing_status['PermissionSetsProvisioningStatus']:
                 while complete == 'false':
-                    provision_status = sso_admin.describe_permission_set_provisioning_status(
-                        InstanceArn=sso_instance_arn,
+                    provision_status = ic_admin.describe_permission_set_provisioning_status(
+                        InstanceArn=ic_instance_arn,
                         ProvisionPermissionSetRequestId=status['RequestId']
                     )
                     if provision_status['PermissionSetProvisioningStatus']['Status'] == 'IN_PROGRESS':
@@ -533,11 +533,11 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn, pipeline_id):
                         sleep(2)
                     else:
                         complete = 'true'
-        except sso_admin.exceptions.ThrottlingException as error:
+        except ic_admin.exceptions.ThrottlingException as error:
             logger.warning("%sHit API limits. Sleep 5s...", error)
             sleep(5)
-        except sso_admin.exceptions.ConflictException as error:
-            logger.info("The same SSO process has been started \
+        except ic_admin.exceptions.ConflictException as error:
+            logger.info("The same IAM Identity Center process has been started \
                         in another invocation, skipping...", error)
             sleep(2)
         except ClientError as error:
@@ -563,9 +563,9 @@ def sync_json_with_aws(local_files, aws_permission_sets, pipeline_id):
 
             # If Permission Set does not exist in AWS - add it.
             if local_name in aws_permission_sets:
-                logger.info('%s exists in SSO - checking policy and configuration', local_name)
+                logger.info('%s exists in IAM Identity Center - checking policy and configuration', local_name)
             else:
-                logger.info('ADD OPERATION: %s does not exist in SSO - adding...', local_name)
+                logger.info('ADD OPERATION: %s does not exist in IAM Identity Center - adding...', local_name)
                 created_perm_set = create_permission_set(local_name, local_desc, local_tags, pipeline_id)
                 created_perm_set_name = created_perm_set['PermissionSet']['Name']
                 created_perm_set_arn = created_perm_set['PermissionSet']['PermissionSetArn']
@@ -631,7 +631,7 @@ def lambda_handler(event, context):
             aws_permission_sets = get_all_permission_sets(pipeline_id)
             logger.info("The existing aws_permission_sets are : %s", aws_permission_sets)
             #Get the permission set's baseline by loading S3 bucket files
-            json_files = get_all_json_files(sso_bucket_name, pipeline_id)
+            json_files = get_all_json_files(ic_bucket_name, pipeline_id)
             sync_json_with_aws(json_files, aws_permission_sets, pipeline_id)
             ##Invoke Next automation lambda function
             logger.info("Published sns topic to invoke auto assignment function. \

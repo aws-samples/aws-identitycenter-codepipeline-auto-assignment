@@ -16,9 +16,9 @@ identitystore_client = boto3.client('identitystore', region_name=runtime_region)
 orgs_client = boto3.client('organizations', region_name=runtime_region)
 pipeline = boto3.client('codepipeline', region_name=runtime_region)
 s3client = boto3.client('s3', region_name=runtime_region)
-sso_admin = boto3.client('sso-admin', region_name=runtime_region)
-sso_bucket_name = os.environ.get('SSO_S3_BucketName')
-sso_instance_arn = os.environ.get('SSO_InstanceArn')
+ic_admin = boto3.client('sso-admin', region_name=runtime_region)
+ic_bucket_name = os.environ.get('IC_S3_BucketName')
+ic_instance_arn = os.environ.get('IC_InstanceArn')
 target_mapping_file_name = os.environ.get('TargetFileName')
 
 logger = logging.getLogger()
@@ -33,16 +33,16 @@ def list_all_current_account_assignment(acct_list, current_aws_permission_sets,
         try:
             for account in acct_list:
                 if account['Status'] != "SUSPENDED":
-                    response = sso_admin.list_account_assignments(
-                        InstanceArn=sso_instance_arn,
+                    response = ic_admin.list_account_assignments(
+                        InstanceArn=ic_instance_arn,
                         AccountId=str(account['Id']),
                         PermissionSetArn=current_aws_permission_sets[each_perm_set_name]['Arn'],
                         MaxResults=100
                         )
                     account_assignment = response['AccountAssignments']
                     while 'NextToken' in response:
-                        response = sso_admin.list_account_assignments(
-                            InstanceArn=sso_instance_arn,
+                        response = ic_admin.list_account_assignments(
+                            InstanceArn=ic_instance_arn,
                             AccountId=str(account['Id']),
                             PermissionSetArn=current_aws_permission_sets[each_perm_set_name]['Arn'],
                             MaxResults=100,
@@ -55,24 +55,24 @@ def list_all_current_account_assignment(acct_list, current_aws_permission_sets,
                     if len(account_assignment) != 0:
                         for each_assignment in account_assignment:
                             ################################################################
-                            # This Env only allows SSO 'GROUP' assignee rather than 'USER' #
+                            # This Env only allows 'GROUP' assignee rather than 'USER' #
                             ################################################################
                             if str(each_assignment['PrincipalType']) == "USER":
-                                delete_user_assignment = sso_admin.delete_account_assignment(
-                                                InstanceArn=sso_instance_arn,
+                                delete_user_assignment = ic_admin.delete_account_assignment(
+                                                InstanceArn=ic_instance_arn,
                                                 TargetId=each_assignment['AccountId'],
                                                 TargetType='AWS_ACCOUNT',
                                                 PermissionSetArn=each_assignment['PermissionSetArn'],
                                                 PrincipalType=each_assignment['PrincipalType'],
                                                 PrincipalId=each_assignment['PrincipalId']
                                             )
-                                logger.info("PrincipalType 'USER' is not recommended in this SSO solution,\
+                                logger.info("PrincipalType 'USER' is not recommended in this solution,\
                                     remove USER assignee:%s", delete_user_assignment)
                             # After remove USER assignee, append all other GROUP assignee to the list.
                             else:
                                 all_assignments.append(each_assignment)
-        except sso_admin.exceptions.ThrottlingException as error:
-            logger.warning("%s. Hit SSO API limit. Sleep 3s...", error)
+        except ic_admin.exceptions.ThrottlingException as error:
+            logger.warning("%s. Hit IAM Identity Center API limit. Sleep 3s...", error)
             sleep(3)
         except Exception as error:
             logger.error("%s", error)
@@ -87,7 +87,7 @@ def list_all_current_account_assignment(acct_list, current_aws_permission_sets,
 def drift_detect_update(all_assignments, global_file_contents,
                         target_file_contents,current_aws_permission_sets,
                         pipeline_id):
-    """Use new mapping information to update SSO assignments"""
+    """Use new mapping information to update IAM Identity Center assignments"""
     check_list = all_assignments
     remove_list = []
     for each_assignment in check_list:
@@ -100,8 +100,8 @@ def drift_detect_update(all_assignments, global_file_contents,
                     # Remove matched assignment from list:
                     if each_assignment['PrincipalId'] == global_group_id and each_assignment["PermissionSetArn"] == permission_set_arn:
                         remove_list.append(each_assignment)
-        except sso_admin.exceptions.ThrottlingException as error:
-            logger.warning("%s. Hit SSO API limit. Sleep 3s...", error)
+        except ic_admin.exceptions.ThrottlingException as error:
+            logger.warning("%s. Hit IAM Identity Center API limit. Sleep 3s...", error)
             sleep(3)
         except Exception as error:
             logger.error("%s", error)
@@ -118,8 +118,8 @@ def drift_detect_update(all_assignments, global_file_contents,
                         target_group_id = get_groupid(target_mapping['TargetGroupName'])
                     if each_assignment['PrincipalId'] == target_group_id and each_assignment['PermissionSetArn'] == permission_set_arn:
                         remove_list.append(each_assignment)
-        except sso_admin.exceptions.ThrottlingException as error:
-            logger.warning("%s. Hit SSO API limit. Sleep 3s...", error)
+        except ic_admin.exceptions.ThrottlingException as error:
+            logger.warning("%s. Hit IAM Identity Center API limit. Sleep 3s...", error)
             sleep(3)
         except Exception as error:
             logger.error("%s",error)
@@ -131,12 +131,12 @@ def drift_detect_update(all_assignments, global_file_contents,
         check_list.remove(item)
     # Search drift by checking the element that remain in check_list.
     if len(check_list) == 0:
-        logger.info("SSO assignments has been applied. No drift was found within current assignments :)")
+        logger.info("IAM Identity Center assignments has been applied. No drift was found within current assignments :)")
     else:
         for delta_assignment in check_list:
             try:
-                delete_user_assignment = sso_admin.delete_account_assignment(
-                                            InstanceArn=sso_instance_arn,
+                delete_user_assignment = ic_admin.delete_account_assignment(
+                                            InstanceArn=ic_instance_arn,
                                             TargetId= delta_assignment['AccountId'],
                                             TargetType='AWS_ACCOUNT',
                                             PermissionSetArn= delta_assignment['PermissionSetArn'],
@@ -144,7 +144,7 @@ def drift_detect_update(all_assignments, global_file_contents,
                                             PrincipalId=delta_assignment['PrincipalId']
                                         )
                 logger.warning("Warning. Drift has been detected and removing..%s", delete_user_assignment)
-            except sso_admin.exceptions.ThrottlingException as error:
+            except ic_admin.exceptions.ThrottlingException as error:
                 logger.warning("%s. Hit API limits. Sleep 3s...",error)
                 sleep(3)
             except Exception as error:
@@ -215,8 +215,8 @@ def global_group_array_mapping(acct_list, global_file_contents,
                                 if not group_id:
                                     logger.error("Cannot assign permission set:%s.", mapping['GlobalGroupName'])
                                 else:
-                                    assignment_response = sso_admin.create_account_assignment(
-                                            InstanceArn = sso_instance_arn,
+                                    assignment_response = ic_admin.create_account_assignment(
+                                            InstanceArn = ic_instance_arn,
                                             TargetId = str(account['Id']),
                                             TargetType = 'AWS_ACCOUNT',
                                             PrincipalType='GROUP',
@@ -224,13 +224,13 @@ def global_group_array_mapping(acct_list, global_file_contents,
                                             PrincipalId=group_id
                                             )
                                     sleep(0.1)  # Aviod hitting API limit.
-                                    logger.info("Performed global SSO group assigment on \
+                                    logger.info("Performed global IAM Identity Center group assigment on \
                                                 account: %s. Response:%s", account['Id'],
                                                 assignment_response)
-                        except sso_admin.exceptions.ThrottlingException as error:
-                            logger.warning("%s. Hit SSO API limit. Sleep 3s...", error)
+                        except ic_admin.exceptions.ThrottlingException as error:
+                            logger.warning("%s. Hit IAM Identity Center API limit. Sleep 3s...", error)
                             sleep(3)
-                        except sso_admin.exceptions.ConflictException as error:
+                        except ic_admin.exceptions.ConflictException as error:
                             logger.info("%s.The same create account assignment process has been \
                                         started in another invocation skipping.", error)
                             sleep(3)
@@ -263,8 +263,8 @@ def target_group_array_mapping(target_file_contents,
                             logger.error("Cannot assign permission set to \
                                          group %s", mapping['TargetGroupName'])
                         else:
-                            assignment_response = sso_admin.create_account_assignment(
-                                    InstanceArn=sso_instance_arn,
+                            assignment_response = ic_admin.create_account_assignment(
+                                    InstanceArn=ic_instance_arn,
                                     TargetId=str(target_account_id),
                                     TargetType='AWS_ACCOUNT',
                                     PrincipalType='GROUP',
@@ -272,12 +272,12 @@ def target_group_array_mapping(target_file_contents,
                                     PrincipalId=group_id
                                     )
                             sleep(0.1)  # Aviod hitting API limit.
-                            logger.info("Performed target SSO group assigment on account %s.\
+                            logger.info("Performed target IAM Identity Center group assigment on account %s.\
                                         Response: %s.", target_account_id, assignment_response)
-        except sso_admin.exceptions.ThrottlingException as error:
-            logger.warning("%s. Hit SSO API limit. Sleep 3s...", error)
+        except ic_admin.exceptions.ThrottlingException as error:
+            logger.warning("%s. Hit IAM Identity Center API limit. Sleep 3s...", error)
             sleep(3)
-        except sso_admin.exceptions.ConflictException as error:
+        except ic_admin.exceptions.ConflictException as error:
             logger.info("%s. The same create account assignment process has been \
                         started in another invocation skipping.", error)
             sleep(3)
@@ -293,25 +293,25 @@ def target_group_array_mapping(target_file_contents,
 
 
 def get_all_permission_sets(pipeline_id):
-    """List all the permission sets for the SSO ARN"""
+    """List all the permission sets for the IAM Identity Center ARN"""
     permission_set_name_and_arn = {}
     try:
-        response = sso_admin.list_permission_sets(
-            InstanceArn=sso_instance_arn,
+        response = ic_admin.list_permission_sets(
+            InstanceArn=ic_instance_arn,
             MaxResults=100
         )
-        sso_permission_sets = response['PermissionSets']
+        ic_permission_sets = response['PermissionSets']
         while 'NextToken' in response:
-            response = sso_admin.list_permission_sets(
-                InstanceArn=sso_instance_arn,
+            response = ic_admin.list_permission_sets(
+                InstanceArn=ic_instance_arn,
                 MaxResults=100,
                 NextToken=response['NextToken']
             )
-            sso_permission_sets += response['PermissionSets']
+            ic_permission_sets += response['PermissionSets']
 
-        for perm_set_arn in sso_permission_sets:
-            describe_perm_set = sso_admin.describe_permission_set(
-                InstanceArn=sso_instance_arn,
+        for perm_set_arn in ic_permission_sets:
+            describe_perm_set = ic_admin.describe_permission_set(
+                InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn
             )
             sleep(0.1)  # Aviod hitting API limit.
@@ -320,8 +320,8 @@ def get_all_permission_sets(pipeline_id):
             permission_set_name_and_arn[perm_set_name] = {'Arn': perm_set_arn}
             logger.debug("%s", permission_set_name_and_arn)
 
-    except sso_admin.exceptions.ThrottlingException as error:
-        logger.warning("%s. Hit SSO API limit. Sleep 3s...", error)
+    except ic_admin.exceptions.ThrottlingException as error:
+        logger.warning("%s. Hit IAM Identity Center API limit. Sleep 3s...", error)
         sleep(3)
     except ClientError as error:
         logger.error("%s.", error)
@@ -333,7 +333,7 @@ def get_all_permission_sets(pipeline_id):
 
 
 def get_groupid(group_display_name):
-    """Get the all the SSO group names and ids"""
+    """Get the all the IAM Identity Center group names and ids"""
     try:
         response = identitystore_client.list_groups(
                     IdentityStoreId=identity_store_id,
@@ -385,13 +385,13 @@ def lambda_handler(event, context):
         acct_list = get_org_accounts()
         logger.info(acct_list)
         # Check if Source files exist.
-        global_file_contents = get_global_mapping_contents(sso_bucket_name, global_mapping_file_name, pipeline_id)
-        target_file_contents = get_target_mapping_contents(sso_bucket_name, target_mapping_file_name, pipeline_id)
+        global_file_contents = get_global_mapping_contents(ic_bucket_name, global_mapping_file_name, pipeline_id)
+        target_file_contents = get_target_mapping_contents(ic_bucket_name, target_mapping_file_name, pipeline_id)
         logger.info("Loading mapping information from the files in s3...")
         # Get current account's permission set info.
         current_aws_permission_sets = get_all_permission_sets(pipeline_id)
         if not current_aws_permission_sets:
-            logger.error("Cannot load existing Permission Sets from AWS SSO!")
+            logger.error("Cannot load existing Permission Sets from AWS IAM Identity Center!")
             pipeline.put_job_failure_result(
                 jobId=pipeline_id,
                 failureDetails={

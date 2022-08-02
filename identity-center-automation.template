@@ -1,77 +1,77 @@
 ---
 AWSTemplateFormatVersion: 2010-09-09
-Description: CloudFormation template creating resources for SSO automation solution (qs-1t52at7re).
+Description: CloudFormation template creating resources for IAM Identity Center (successor to AWS Single Sign-On) automation solution (qs-1t52at7re).
 Parameters:
-  SSOInstanceARN:
+  ICInstanceARN:
     Type: String
-    Description: SSOInstanceARN can be found on the AWS SSO console 'Settings' page.
+    Description: ICInstanceARN can be found on the AWS IAM Identity Center console 'Settings' page.
   IdentityStoreId:
     Type: String
-    Description: Identity Store ID can be found on the AWS SSO console 'Settings' page.
-  GlobalSSOGroupMappingFileName:
+    Description: Identity Store ID can be found on the AWS IAM Identity Center console 'Settings' page.
+  GlobalICGroupMappingFileName:
     Description: The global mapping json file name. You can use the default value.
     Type: String
     Default: global-mapping.json
-  TargetSSOGroupMappingFileName:
+  TargetICGroupMappingFileName:
     Description: The target mapping json file name. You can use the default value.
     Type: String
     Default: target-mapping.json
-  SSOMappingBucketName:
+  ICMappingBucketName:
     Description: >-
       The S3 bucket that stores the lambda code as well as permission set and
       mapping definition. It's the same name that is used in
-      sso-s3-bucket.template.
+      identity-center-s3-bucket.template.
     Type: String
   AssignmentLambdaZipFileName:
     Description: >-
-      Lambda function code that manages SSO account assignments. You can use the
+      Lambda function code that manages IAM Identity Center account assignments. You can use the
       default value.
     Type: String
-    Default: sso-auto-assign.zip
+    Default: identity-center-auto-assign.zip
   PermissionSetsLambdaZipFileName:
     Description: >-
-      Lambda function code that manages SSO permission sets. You can use the
+      Lambda function code that manages IAM Identity Center permission sets. You can use the
       default value.
     Type: String
-    Default: sso-auto-permissionsets.zip
+    Default: identity-center-auto-permissionsets.zip
   SNSEmailEndpointSubscription:
     Description: The SNS subscription which used to receive SNS email notification.
     Type: String
-  SSOAutomationAdminArn:
+  ICAutomationAdminArn:
     Type: String
     Description: >-
-      The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) 
-      will have permissions to update SSO settings without trigger the SNS notification, 
-      besides the SSOAssignmentAutomationLambdaRole and SSOPermissionSetAutomationLambdaRole.
+      The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user) 
+      will have permissions to update IAM Identity Center settings without trigger the SNS notification, 
+      besides the ICAssignmentAutomationLambdaRole and ICPermissionSetAutomationLambdaRole.
 
 Resources:
 ######################################################
-# Lambda function(1) that manages SSO permission sets #
+# Lambda function(1) that manages IC permission sets #
 ######################################################
-  SSOPermissionSetAutomationLambda:
+  ICPermissionSetAutomationLambda:
     Type: 'AWS::Lambda::Function'
     Properties:
-      FunctionName: sso-permissionsets-enabler
+      FunctionName: ic-permissionsets-enabler
       Handler: auto-permissionsets.lambda_handler
       Code:
-        S3Bucket: !Ref SSOMappingBucketName
+        S3Bucket: !Ref ICMappingBucketName
         S3Key: !Ref   PermissionSetsLambdaZipFileName
       Runtime: "python3.9"
       Environment:
         Variables:
-          SSO_InstanceArn: !Ref SSOInstanceARN
-          SSO_S3_BucketName: !Ref SSOMappingBucketName        
-          SNS_Topic_Name:  'sso-automation-topic'
+          IC_InstanceArn: !Ref ICInstanceARN
+          IC_S3_BucketName: !Ref ICMappingBucketName        
+          SNS_Topic_Name:  'ic-automation-topic'
           Lambda_Region: !Ref "AWS::Region"
       MemorySize: 256
       Timeout: 900
       Role: !GetAtt
-        - SSOPermissionSetAutomationLambdaRole
+        - ICPermissionSetAutomationLambdaRole
         - Arn
-  SSOPermissionSetAutomationLambdaRole:
+  ICPermissionSetAutomationLambdaRole:
     Type: 'AWS::IAM::Role'
     Properties:
-      RoleName: SSOPermissionSetAutomationLambdaRole
+      RoleName: ICPermissionSetAutomationLambdaRole
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -82,7 +82,7 @@ Resources:
               - 'sts:AssumeRole'
       Path: /
       Policies:
-        - PolicyName: SSOPermissionSetAutomationLambdaRolePolicy
+        - PolicyName: ICPermissionSetAutomationLambdaRolePolicy
           PolicyDocument:
             Statement:
               - Sid: EssentialActions
@@ -106,12 +106,12 @@ Resources:
                   - 's3:GetObject'    
                   - 's3:PutObject'
                   - 's3:PutObjectAcl'                  
-                Resource: !Sub 'arn:aws:s3:::${SSOMappingBucketName}/*'
+                Resource: !Sub 'arn:aws:s3:::${ICMappingBucketName}/*'
               - Sid: S3EssentialBucketAction
                 Effect: Allow
                 Action:
                   - 's3:ListBucket'
-                Resource: !Sub 'arn:aws:s3:::${SSOMappingBucketName}'
+                Resource: !Sub 'arn:aws:s3:::${ICMappingBucketName}'
               - Sid: KMSEssentialActions
                 Effect: Allow
                 Action:
@@ -124,35 +124,35 @@ Resources:
                   - 'sns:Publish'                    
                 Resource: '*'
 
-#########################################################
-# Lambda function(2) that manages SSO account assignment #
-#########################################################
-  SSOAssignmentAutomationLambda:
+#########################################################################
+# Lambda function(2) that manages IAM Identity Center account assignment #
+##########################################################################
+  ICAssignmentAutomationLambda:
     Type: 'AWS::Lambda::Function'
     Properties:
-      FunctionName: sso-auto-assignment-enabler
+      FunctionName: ic-auto-assignment-enabler
       Handler: auto-assignment.lambda_handler
       Code:
-        S3Bucket: !Ref SSOMappingBucketName
+        S3Bucket: !Ref ICMappingBucketName
         S3Key: !Ref AssignmentLambdaZipFileName
       Runtime: "python3.9"
       Environment:
         Variables:
-          SSO_InstanceArn: !Ref SSOInstanceARN
+          IC_InstanceArn: !Ref ICInstanceARN
           IdentityStore_Id: !Ref IdentityStoreId
-          SSO_S3_BucketName: !Ref SSOMappingBucketName
-          GlobalFileName: !Ref GlobalSSOGroupMappingFileName
-          TargetFileName: !Ref TargetSSOGroupMappingFileName
+          IC_S3_BucketName: !Ref ICMappingBucketName
+          GlobalFileName: !Ref GlobalICGroupMappingFileName
+          TargetFileName: !Ref TargetICGroupMappingFileName
           Lambda_Region: !Ref "AWS::Region"
       MemorySize: 256
       Timeout: 900
       Role: !GetAtt
-        - SSOAssignmentAutomationLambdaRole
+        - ICAssignmentAutomationLambdaRole
         - Arn
-  SSOAssignmentAutomationLambdaRole:
+  ICAssignmentAutomationLambdaRole:
     Type: 'AWS::IAM::Role'
     Properties:
-      RoleName: SSOAssignmentAutomationLambdaRole
+      RoleName: ICAssignmentAutomationLambdaRole
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -163,7 +163,7 @@ Resources:
               - 'sts:AssumeRole'
       Path: /
       Policies:
-        - PolicyName: SSOAssignmentAutomationLambdaPolicy
+        - PolicyName: ICAssignmentAutomationLambdaPolicy
           PolicyDocument:
             Statement:
               - Sid: EssentialActions
@@ -203,7 +203,7 @@ Resources:
                   - 's3:GetObject'       
                   - 's3:PutObject'
                   - 's3:PutObjectAcl'                  
-                Resource: !Sub 'arn:aws:s3:::${SSOMappingBucketName}/*'
+                Resource: !Sub 'arn:aws:s3:::${ICMappingBucketName}/*'
               - Sid: KMSEssentialActions
                 Effect: Allow
                 Action:
@@ -213,10 +213,10 @@ Resources:
 ##########################################################
 # AWS Event Rules - Trigger Automation by regular actions #
 ##########################################################
-  SSOCreateEventRuleforOrganization:
+  ICCreateEventRuleforOrganization:
     Type: 'AWS::Events::Rule'
     Properties:
-      Description: Trigger the SSO automation lambda function
+      Description: Trigger the automation lambda function
       EventPattern:
         source:
           - aws.organizations
@@ -228,19 +228,19 @@ Resources:
           eventName:
             - CreateAccount
             - InviteAccountToOrganization
-      Name: TriggerSSOautomationenablerRule
+      Name: TriggerICAutomationEnablerRule
       State: ENABLED
       Targets:
-        - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
-          Id: TargetFunctionSSOPermissionSet
+        - Arn: !GetAtt ICPermissionSetAutomationLambda.Arn
+          Id: TargetFunctionICPermissionSet
 
 ###########################################################################################################
-# AWS Event Rules - Detect manual user interaction with the SSO Service - comment line 258-366 to disable#
+# AWS Event Rules - Detect manual user interaction with the IAM Identity Center - comment line 258-366 to disable#
 ############################################################################################################
-  SSOManualActionDetectionRule1:
+  ICManualActionDetectionRule1:
     Type: 'AWS::Events::Rule'
     Properties:
-      Description: Trigger the SSO automation lambda function when it detects manual user interaction from eventSource sso.amazonaws.com
+      Description: Trigger the automation lambda function when it detects manual user interaction from eventSource sso.amazonaws.com
       EventPattern:
         source:
           - aws.sso
@@ -275,21 +275,21 @@ Resources:
               sessionIssuer:
                 userName:
                   - anything-but: 
-                      - !Ref SSOAutomationAdminArn
-                      - SSOAssignmentAutomationLambdaRole
-                      - SSOPermissionSetAutomationLambdaRole
-      Name: SSOManualActionDetectionRule1
+                      - !Ref ICAutomationAdminArn
+                      - ICAssignmentAutomationLambdaRole
+                      - ICPermissionSetAutomationLambdaRole
+      Name: ICManualActionDetectionRule1
       State: ENABLED
       Targets: 
-        - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
+        - Arn: !GetAtt ICPermissionSetAutomationLambda.Arn
           Id: TargetFunctionPermissionSetAutomation
-        - Arn: !GetAtt SSOAlertSNSNotificationLambda.Arn
+        - Arn: !GetAtt ICAlertSNSNotificationLambda.Arn
           Id: TargetFunctionSSN
 
-  SSOManualActionDetectionRule2:
+  ICManualActionDetectionRule2:
     Type: 'AWS::Events::Rule'
     Properties:
-      Description: Trigger the SSO automation lambda function when it detects manual user interaction from eventSource sso-directory.amazonaws.com
+      Description: Trigger the automation lambda function when it detects manual user interaction from eventSource sso-directory.amazonaws.com
       EventPattern:
         source:
           - aws.sso-directory
@@ -336,32 +336,32 @@ Resources:
               sessionIssuer:
                 userName:
                   - anything-but: 
-                      - !Ref SSOAutomationAdminArn
-                      - SSOAssignmentAutomationLambdaRole
-                      - SSOPermissionSetAutomationLambdaRole        
-      Name: SSOManualActionDetectionRule2
+                      - !Ref ICAutomationAdminArn
+                      - ICAssignmentAutomationLambdaRole
+                      - ICPermissionSetAutomationLambdaRole        
+      Name: ICManualActionDetectionRule2
       State: ENABLED
       Targets: 
-        - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
+        - Arn: !GetAtt ICPermissionSetAutomationLambda.Arn
           Id: TargetFunctionPermissionSetAutomation
-        - Arn: !GetAtt SSOAlertSNSNotificationLambda.Arn
+        - Arn: !GetAtt ICAlertSNSNotificationLambda.Arn
           Id: TargetFunctionSSN
   
-  SSOScheduledRuleBaselining:
+  ICScheduledRuleBaselining:
     Type: AWS::Events::Rule
     Properties:
-      Description:  Schedule CloudWatch event rule (re-baselining) for the SSO lambda function (every 12 hour by default)
+      Description:  Schedule CloudWatch event rule (re-baselining) for the lambda function (every 12 hour by default)
       ScheduleExpression: rate(12 hours)
       State: "ENABLED"
       Targets:
-        - Arn: !GetAtt SSOPermissionSetAutomationLambda.Arn
+        - Arn: !GetAtt ICPermissionSetAutomationLambda.Arn
           Id: "Every12Hours"
 
-  SNSSSOManualActionAlertTopic:
+  SNSICManualActionAlertTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: SSO-Manual-Modification-Detection-Alert
-      TopicName: SSO-Manual-Modification-Detection-Alert
+      DisplayName: IC-Manual-Modification-Detection-Alert
+      TopicName: IC-Manual-Modification-Detection-Alert
       Subscription:
         - Endpoint: !Ref SNSEmailEndpointSubscription
           Protocol: email-json
@@ -369,12 +369,12 @@ Resources:
 #####################################################
 ## Lambda function(3) to customize SNS Email Subject#
 #####################################################
-  SSOAlertSNSNotificationLambda:                 
+  ICAlertSNSNotificationLambda:                 
     Type: 'AWS::Lambda::Function'
     Properties:
-      FunctionName: sso-alert-SNSnotification
+      FunctionName: ic-alert-SNSnotification
       Handler: index.lambda_handler
-      Role: !GetAtt  SSOAlertSNSNotificationRole.Arn
+      Role: !GetAtt  ICAlertSNSNotificationRole.Arn
       Code:
         ZipFile: |
           import boto3
@@ -382,7 +382,7 @@ Resources:
           import json
           sns_client = boto3.client("sns")
           sns_arn= os.environ.get("SNSTopic_ARN")
-          sns_email_subject="AWS SSO Manual Modification"
+          sns_email_subject="AWS IAM Identity Center Manual Modification"
 
           def lambda_handler(event, context):
             print(event)
@@ -400,14 +400,14 @@ Resources:
       Runtime: "python3.9"
       Environment:
         Variables:
-          SNSTopic_ARN: !Ref SNSSSOManualActionAlertTopic
+          SNSTopic_ARN: !Ref SNSICManualActionAlertTopic
       MemorySize: 128
       Timeout: 120
 
-  SSOAlertSNSNotificationRole:
+  ICAlertSNSNotificationRole:
     Type: 'AWS::IAM::Role'
     Properties:
-      RoleName: SSOAlertSNSNotificationRole
+      RoleName: ICAlertSNSNotificationRole
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -418,14 +418,14 @@ Resources:
               - 'sts:AssumeRole'
       Path: /
       Policies:
-        - PolicyName: SSOAssignmentAutomationLambdaPolicy
+        - PolicyName: ICAssignmentAutomationLambdaPolicy
           PolicyDocument:
             Statement:
               - Sid: EssentialActions
                 Effect: Allow
                 Action:
                   - 'sns:Publish'                          
-                Resource: !Ref SNSSSOManualActionAlertTopic
+                Resource: !Ref SNSICManualActionAlertTopic
               - Sid: CloudWatchLog
                 Effect: Allow
                 Action:   
@@ -440,34 +440,34 @@ Resources:
 #  Add Lambda permission to AWS event rules
   LambdaResourcePermissionForAutoPermissionSetEvent:
     Type: 'AWS::Lambda::Permission'
-    DependsOn: SSOAlertSNSNotificationLambda
+    DependsOn: ICAlertSNSNotificationLambda
     Properties:
       Action: 'lambda:InvokeFunction'
-      FunctionName: !GetAtt SSOPermissionSetAutomationLambda.Arn
+      FunctionName: !GetAtt ICPermissionSetAutomationLambda.Arn
       Principal: events.amazonaws.com
   LambdaResourcePermissionForAutoassignEvent:
     Type: 'AWS::Lambda::Permission'
-    DependsOn: SSOAlertSNSNotificationLambda
+    DependsOn: ICAlertSNSNotificationLambda
     Properties:
       Action: 'lambda:InvokeFunction'
-      FunctionName: !GetAtt SSOAssignmentAutomationLambda.Arn
+      FunctionName: !GetAtt ICAssignmentAutomationLambda.Arn
       Principal: events.amazonaws.com
   LambdaResourcePermissionForSNSEvent:
     Type: 'AWS::Lambda::Permission'
     DependsOn: LambdaResourcePermissionForAutoassignEvent
     Properties:
       Action: 'lambda:InvokeFunction'
-      FunctionName: !GetAtt SSOAlertSNSNotificationLambda.Arn
+      FunctionName: !GetAtt ICAlertSNSNotificationLambda.Arn
       Principal: events.amazonaws.com
 
 ##############################################################################
-# SNS topic that used by permissionset lambda(1) to invoke sso assign lambda #
+# SNS topic that used by permissionset lambda(1) to invoke auto assign lambda #
 ##############################################################################
   SNSInvokeLambdaTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: sso-automation-topic
-      TopicName: sso-automation-topic
+      DisplayName: ic-automation-topic
+      TopicName: ic-automation-topic
   SNSInvokeLambdaTopicPolicy: 
     Type: AWS::SNS::TopicPolicy
     Properties:
@@ -482,11 +482,11 @@ Resources:
             Resource: !Ref SNSInvokeLambdaTopic
             Principal:
               AWS: 
-               - !GetAtt SSOPermissionSetAutomationLambdaRole.Arn
+               - !GetAtt ICPermissionSetAutomationLambdaRole.Arn
   rOrgGetAccountsLambdaSubscription: 
     Type: AWS::SNS::Subscription
     Properties:
-      Endpoint: !GetAtt SSOAssignmentAutomationLambda.Arn
+      Endpoint: !GetAtt ICAssignmentAutomationLambda.Arn
       Protocol: lambda
       TopicArn: !Ref SNSInvokeLambdaTopic
 
@@ -496,4 +496,4 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: sns.amazonaws.com
       SourceArn: !Ref SNSInvokeLambdaTopic
-      FunctionName: !GetAtt SSOAssignmentAutomationLambda.Arn
+      FunctionName: !GetAtt ICAssignmentAutomationLambda.Arn

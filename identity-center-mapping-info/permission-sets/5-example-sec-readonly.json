@@ -3,7 +3,7 @@
     "Description": "5-example-security-readonly",
     "Tags": [
         {
-            "Key": "sso-solution",
+            "Key": "identity-center-solution",
             "Value": "test"
         },
         {

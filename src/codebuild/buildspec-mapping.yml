@@ -9,6 +9,6 @@ phases:
       - pwd
       - ls -lah
       - git log | head -10
-      - aws s3 sync --delete  sso-mapping-info/ s3://$S3_BUCKET_NAME/
+      - aws s3 sync --delete  identity-center-mapping-info/ s3://$S3_BUCKET_NAME/
       - aws s3api list-objects-v2 --bucket $S3_BUCKET_NAME
       - echo "Sync done."

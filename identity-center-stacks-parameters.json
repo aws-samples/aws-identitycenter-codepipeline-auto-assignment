@@ -2,10 +2,10 @@
     "Parameters": {
         "IdentityStoreId": "",
         "OrganizationId": "",
-        "SSOMappingBucketName": "",
+        "ICMappingBucketName": "",
         "SNSEmailEndpointSubscription": "",
-        "SSOAutomationAdminArn": "",
-        "SSOInstanceARN": "",
-        "SSOKMSAdminArn": ""
+        "ICAutomationAdminArn": "",
+        "ICInstanceARN": "",
+        "ICKMSAdminArn": ""
     }
 }

@@ -1,28 +1,28 @@
 ---
 AWSTemplateFormatVersion: 2010-09-09
-Description: "This template creates AWS CodePipeline and other CICD resources for SSO automation solution (qs-1t52at7re)"
+Description: "This template creates AWS CodePipeline and other CICD resources for Identity Center automation solution (qs-1t52at7re)"
 Parameters:
   RepositoryName:
     Description: 'The name of CodeCommit repository that has been created for this solution'
     Type: String
-    Default: <Replace-With-Your-Own-Value, Eg my-sso-repo>
+    Default: <Replace-With-Your-Own-Value, Eg my-ic-repo>
   RepoBranch:
     Description: The name of branch that will trigger the CodePipeline run.
     Type: String
     Default: <Replace-With-Your-Own-Value, Eg main>
-  SSOMappingBucketName:
+  ICMappingBucketName:
     Type: String
     Description: >-
       The same bucket name will be used in the automation and s3 stack. This S3
       bucket stores the permission sets and mapping files.
-    Default: <Replace-With-Your-Own-Value, Eg sso-s3-automation-sample-bucket>
+    Default: <Replace-With-Your-Own-Value, Eg ic-s3-automation-sample-bucket>
 
 Resources:
   PipelineArtifactStoreBucket:
     Type: 'AWS::S3::Bucket'
     DeletionPolicy: Delete
     Properties:
-      BucketName: !Sub 'sso-pipeline-artifact-bucket-${AWS::AccountId}'
+      BucketName: !Sub 'ic-pipeline-artifact-bucket-${AWS::AccountId}'
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -75,7 +75,7 @@ Resources:
         Location: !Ref PipelineArtifactStoreBucket
         Type: S3
       RoleArn: !GetAtt CodePipelineServiceRole.Arn
-      Name: SSO-Automation-Sample-Solution
+      Name: Identity Center-Automation-Sample-Solution
       Stages:
         - Name: Source
           Actions:
@@ -114,10 +114,10 @@ Resources:
                 Provider: CloudFormation
               Configuration:
                 ActionMode: CREATE_UPDATE
-                StackName: SSO-S3-Bucket-Stack
+                StackName: IdentityCenter-S3-Bucket-Stack
                 Capabilities: CAPABILITY_IAM
-                TemplateConfiguration: UpdatedSourceArtifacts::sso-s3-parameters.json
-                TemplatePath: UpdatedSourceArtifacts::sso-s3-bucket.template
+                TemplateConfiguration: UpdatedSourceArtifacts::ic-s3-parameters.json
+                TemplatePath: UpdatedSourceArtifacts::identity-center-s3-bucket.template
                 RoleArn: !GetAtt CodeBuildRole.Arn
               InputArtifacts:
                 - Name: UpdatedSourceArtifacts
@@ -133,9 +133,9 @@ Resources:
               Configuration:
                 ProjectName: !Ref CodeBuildProjectS3Upload
               RunOrder: 3
-        - Name: BuildSSOTemplate
+        - Name: BuildICTemplate
           Actions:
-            - Name: BuildSSOTemplate
+            - Name: BuildICTemplate
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
@@ -145,10 +145,10 @@ Resources:
                 - Name: UpdatedSourceArtifacts
               Configuration:
                 ActionMode: CREATE_UPDATE
-                StackName: SSO-Automation-Stack
+                StackName: IdentityCenter-Automation-Stack
                 Capabilities: 'CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND'
-                TemplateConfiguration: UpdatedSourceArtifacts::sso-automation-parameters.json
-                TemplatePath: UpdatedSourceArtifacts::sso-automation.template
+                TemplateConfiguration: UpdatedSourceArtifacts::ic-automation-parameters.json
+                TemplatePath: UpdatedSourceArtifacts::identity-center-automation.template
                 RoleArn: !GetAtt CodeBuildRole.Arn
               RunOrder: 1
             - Name: SyncMappingFiles
@@ -180,13 +180,13 @@ Resources:
                 Provider: Lambda
                 Version: '1'
               Configuration:
-                FunctionName: "sso-permissionsets-enabler"
+                FunctionName: "ic-permissionsets-enabler"
               RunOrder: 2
 
   CodePipelineServiceRole:
     Type: 'AWS::IAM::Role'
     Properties:
-      RoleName: SSOSamplePipelineRole
+      RoleName: ICSamplePipelineRole
       AssumeRolePolicyDocument:
         Statement:
           - Action:
@@ -264,7 +264,7 @@ Resources:
     Type: 'AWS::CodeBuild::Project'
     Properties:
       Name: BuildandUploadLambdaFiles
-      Description: Compress Lambda python scripts and sync the zip files to SSO secure S3 bucket.
+      Description: Compress Lambda python scripts and sync the zip files to Identity Center secure S3 bucket.
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Artifacts:
         Type: NO_ARTIFACTS
@@ -275,7 +275,7 @@ Resources:
         EnvironmentVariables:
           - Name: S3_BUCKET_NAME
             Type: PLAINTEXT
-            Value: !Ref SSOMappingBucketName
+            Value: !Ref ICMappingBucketName
       Source:
         Type: CODECOMMIT
         Location: !Sub >-
@@ -289,7 +289,7 @@ Resources:
     Properties:
       Name: UploadMappingFilestoS3
       Description: >-
-        The Lambda functions are ready. This will sync the latest SSO mapping
+        The Lambda functions are ready. This will sync the latest Identity Center mapping
         defination files to s3.
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Artifacts:
@@ -301,7 +301,7 @@ Resources:
         EnvironmentVariables:
           - Name: S3_BUCKET_NAME
             Type: PLAINTEXT
-            Value: !Ref SSOMappingBucketName
+            Value: !Ref ICMappingBucketName
       Source:
         Type: CODECOMMIT
         Location: !Sub >-
@@ -313,7 +313,7 @@ Resources:
   CodeBuildRole:
     Type: 'AWS::IAM::Role'
     Properties:
-      RoleName: SSOAutoPipelineCodeBuildRole
+      RoleName: ICAutoPipelineCodeBuildRole
       AssumeRolePolicyDocument:
         Statement:
           - Action:

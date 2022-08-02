@@ -1,9 +1,9 @@
 {
-    "Name": "2-example-readonly",
-    "Description": "2-example-readonly",
+    "Name": "1-example-admin",
+    "Description": "1-example-admin",
     "Tags": [
         {
-            "Key": "sso-solution",
+            "Key": "identity-center-solution",
             "Value": "test"
         },
         {
@@ -13,8 +13,8 @@
     ],
     "ManagedPolicies": [
         {
-            "Name": "SecurityAudit",
-            "Arn": "arn:aws:iam::aws:policy/SecurityAudit"
+            "Name": "AdministratorAccess",
+            "Arn": "arn:aws:iam::aws:policy/AdministratorAccess"
         }
     ],
     "InlinePolicies": []

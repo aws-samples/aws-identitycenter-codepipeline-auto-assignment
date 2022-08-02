@@ -1,36 +1,36 @@
 ---
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
-  Cloudformation template creating S3 and KMS resources for SSO automation
-  solution. The s3 bucket stores SSO permission sets and
+  Cloudformation template creating S3 and KMS resources for IAM Identity Center automation
+  solution. The s3 bucket stores IAM Identity Center permission sets and
   assignment mapping files and lambda zip files (qs-1t52at7re).
 Parameters:
-  SSOMappingBucketName:
+  ICMappingBucketName:
     Type: String
     Description: >-
       The S3 bucket that stores the lambda code as well as permission set and
       mapping definition. It's the same name that is used in
-      sso-automation.template.
+      identity-center-automation.template.
   OrganizationId:
     Type: String
     Description: AWS Organizations ID
-  SSOAutomationAdminArn:
+  ICAutomationAdminArn:
     Type: String
     Description: >-
-      The ARN of SSO automation admin IAM role or IAM user. This IAM role(or user) 
-      will have permissions to manage S3 bucket, besides SSOAutoPipelineCodeBuildRole.
-  SSOKMSAdminArn:
+      The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user) 
+      will have permissions to manage S3 bucket, besides ICAutoPipelineCodeBuildRole.
+  ICKMSAdminArn:
     Type: String
     Description: >-
-      The ARN of IAM role(or user) which will have permissions to manage the SSO KMS
-      key, besides SSOAutoPipelineCodeBuildRole.
+      The ARN of IAM role(or user) which will have permissions to manage the IAM Identity Center KMS
+      key, besides ICAutoPipelineCodeBuildRole.
 
 Resources:
   S3Bucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Delete
     Properties:
-      BucketName: !Ref SSOMappingBucketName 
+      BucketName: !Ref ICMappingBucketName 
       VersioningConfiguration: 
         Status: Enabled
       BucketEncryption:
@@ -86,8 +86,8 @@ Resources:
             Condition:
               ArnNotLike:
                 aws:PrincipalArn: 
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOAutoPipelineCodeBuildRole"
-                  - !Ref SSOAutomationAdminArn
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
+                  - !Ref ICAutomationAdminArn
           - Sid: AllowObjectUpdate
             Action:
               - s3:DeleteObject
@@ -102,8 +102,8 @@ Resources:
             Condition:
               ArnNotLike:
                 aws:PrincipalArn: 
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOAutoPipelineCodeBuildRole"
-                  - !Ref SSOAutomationAdminArn
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
+                  - !Ref ICAutomationAdminArn
           - Sid: OnlyUpdatePolicy
             Action:
               - s3:PutBucketPolicy
@@ -115,8 +115,8 @@ Resources:
             Condition:
               ArnNotLike:
                 aws:PrincipalArn: 
-                  - !Ref SSOAutomationAdminArn
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOAutoPipelineCodeBuildRole"
+                  - !Ref ICAutomationAdminArn
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
           - Sid: require_kms_encryption_on_puts
             Action:
               - s3:PutObject
@@ -132,7 +132,7 @@ Resources:
   S3BucketKMSKey:
     Type: "AWS::KMS::Key"
     Properties: 
-      Description: SSO mapping bucket Server-side encryption KMS Key
+      Description: Identity Center(IC) mapping bucket Server-side encryption KMS Key
       EnableKeyRotation: true
       KeyPolicy:
         Version: 2012-10-17
@@ -141,15 +141,15 @@ Resources:
           - Sid: KMS Admin Permissions
             Effect: Allow
             Principal:
-              AWS: !Ref SSOKMSAdminArn  
+              AWS: !Ref ICKMSAdminArn  
             Action: "kms:*"
             Resource: "*"
           - Sid: Key management Permissions
             Effect: Allow
             Principal:
               AWS: 
-                - !Ref SSOAutomationAdminArn
-                - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOAutoPipelineCodeBuildRole"
+                - !Ref ICAutomationAdminArn
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
             Action: 
               - "kms:CancelKeyDeletion"
               - "kms:Create*"
@@ -182,10 +182,10 @@ Resources:
             Condition:
               ForAnyValue:ArnLike:
                 aws:PrincipalARN:
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOAutoPipelineCodeBuildRole"
-                  #IAM Role ARN of SSO automation Lambda functions
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOPermissionSetAutomationLambdaRole"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SSOAssignmentAutomationLambdaRole"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
+                  #IAM Role ARN of IAM Identity Center automation Lambda functions
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICPermissionSetAutomationLambdaRole"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAssignmentAutomationLambdaRole"
           # - Sid: Allow desribe key permission for other monitor roles
           #   Effect: Allow
           #   Principal:
@@ -225,5 +225,5 @@ Resources:
   S3globalAssetKMSKeyAlias:
     Type: "AWS::KMS::Alias"
     Properties: 
-      AliasName:  "alias/sso-mapping-s3-bucket-key"
+      AliasName:  "alias/ic-mapping-s3-bucket-key"
       TargetKeyId: !GetAtt  S3BucketKMSKey.Arn
