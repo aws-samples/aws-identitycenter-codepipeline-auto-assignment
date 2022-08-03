@@ -179,6 +179,7 @@ Resources:
                   - 'iam:ListAttachedRolePolicies'  
                   - 'iam:ListRolePolicies'
                   - 'iam:PutRolePolicy'
+                  - 'iam:UpdateSAMLProvider'
                   - 'identitystore:ListGroups'
                   - 'logs:CreateLogDelivery'
                   - 'logs:CreateLogGroup'
