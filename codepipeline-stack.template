@@ -75,7 +75,7 @@ Resources:
         Location: !Ref PipelineArtifactStoreBucket
         Type: S3
       RoleArn: !GetAtt CodePipelineServiceRole.Arn
-      Name: Identity Center-Automation-Sample-Solution
+      Name: Identity-Center-Automation-Sample-Solution
       Stages:
         - Name: Source
           Actions:
@@ -343,6 +343,7 @@ Resources:
                   - 'iam:DeleteRole'
                   - 'iam:DeleteRolePolicy'
                   - 'iam:GetRole'
+                  - 'iam:GetRolePolicy'
                   - 'iam:PassRole'
                   - 'iam:PutRolePolicy'
                   - 'kms:*'
