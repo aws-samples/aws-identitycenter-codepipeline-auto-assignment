@@ -1,0 +1,11 @@
+{
+    "Parameters": {
+        "IdentityStoreId": "",
+        "OrganizationId": "",
+        "ICMappingBucketName": "",
+        "SNSEmailEndpointSubscription": "",
+        "ICAutomationAdminArn": "",
+        "ICInstanceARN": "",
+        "ICKMSAdminArn": ""
+    }
+}

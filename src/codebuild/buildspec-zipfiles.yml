@@ -1,0 +1,18 @@
+version: 0.2
+
+env:
+  git-credential-helper: yes
+phases:
+  build:
+    commands:
+      - echo "Sync  lambda code to S3 bucket"
+      - pwd
+      - ls -lah
+      #Build Lambda Zip file with no folder structure
+      - zip -j identity-center-auto-assign.zip src/lambda-code/identity-center-auto-assign/*.py
+      - zip -j identity-center-auto-permissionsets.zip src/lambda-code/identity-center-auto-permissionsets/*.py  
+      - ls -lah
+      #Upload lambda zip code using aws sync. The bucket name is defined in identity-center-s3-bucket.template
+      - aws s3 sync .  s3://$S3_BUCKET_NAME/  --exclude "*" --include "identity-center-auto-assign.zip"
+      - aws s3 sync .  s3://$S3_BUCKET_NAME/  --exclude "*" --include "identity-center-auto-permissionsets.zip"
+      - aws s3api list-objects-v2 --bucket $S3_BUCKET_NAME

@@ -1,0 +1,21 @@
+{
+    "Name": "1-example-admin",
+    "Description": "1-example-admin",
+    "Tags": [
+        {
+            "Key": "identity-center-solution",
+            "Value": "test"
+        },
+        {
+            "Key": "scope",
+            "Value": "global"
+        }
+    ],
+    "ManagedPolicies": [
+        {
+            "Name": "AdministratorAccess",
+            "Arn": "arn:aws:iam::aws:policy/AdministratorAccess"
+        }
+    ],
+    "InlinePolicies": []
+}
