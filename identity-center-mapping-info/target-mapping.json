@@ -1,0 +1,21 @@
+[
+   {
+      "TargetGroupName":"Example_Group_4",
+      "PermissionSetName":[
+         "4-example-operations"
+      ],
+      "TargetAccountid":[
+         "123456789012"
+      ]
+   },
+   {
+      "TargetGroupName":"Example_Group_5",
+      "PermissionSetName":[
+         "5-example-sec-readonly"
+      ],
+      "TargetAccountid":[
+         "0987654321012",
+         "123456789012"
+      ]
+   }
+]
