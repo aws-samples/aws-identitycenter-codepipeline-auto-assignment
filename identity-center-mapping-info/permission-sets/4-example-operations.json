@@ -1,0 +1,42 @@
+{
+    "Name": "4-example-operations",
+    "Description": "4-example-operations",
+    "Tags": [
+        {
+            "Key": "identity-center-solution",
+            "Value": "test"
+        },
+        {
+            "Key": "scope",
+            "Value": "global"
+        }
+    ],
+    "ManagedPolicies": [
+        {
+            "Name": "SupportUser",
+            "Arn": "arn:aws:iam::aws:policy/job-function/SupportUser"
+        },
+        {
+            "Name": "AWSCodePipelineReadOnlyAccess",
+            "Arn": "arn:aws:iam::aws:policy/AWSCodePipelineReadOnlyAccess"
+        },
+        {
+            "Name": "CloudWatchLogsReadOnlyAccess",
+            "Arn": "arn:aws:iam::aws:policy/CloudWatchLogsReadOnlyAccess"
+        }
+    ],
+    "InlinePolicies": {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "GlobalOpsSupportCustom",
+                "Effect": "Allow",
+                "Action": [
+                    "ec2:*",
+                    "kms:DescribeKey"
+                ],
+                "Resource": "*"
+            }
+        ]
+    }
+}

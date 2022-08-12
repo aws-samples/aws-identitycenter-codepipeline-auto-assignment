@@ -1,0 +1,229 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  Cloudformation template creating S3 and KMS resources for IAM Identity Center automation
+  solution. The s3 bucket stores IAM Identity Center permission sets and
+  assignment mapping files and lambda zip files (qs-1t52at7re).
+Parameters:
+  ICMappingBucketName:
+    Type: String
+    Description: >-
+      The S3 bucket that stores the lambda code as well as permission set and
+      mapping definition. It's the same name that is used in
+      identity-center-automation.template.
+  OrganizationId:
+    Type: String
+    Description: AWS Organizations ID
+  ICAutomationAdminArn:
+    Type: String
+    Description: >-
+      The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user) 
+      will have permissions to manage S3 bucket, besides ICAutoPipelineCodeBuildRole.
+  ICKMSAdminArn:
+    Type: String
+    Description: >-
+      The ARN of IAM role(or user) which will have permissions to manage the IAM Identity Center KMS
+      key, besides ICAutoPipelineCodeBuildRole.
+
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Ref ICMappingBucketName 
+      VersioningConfiguration: 
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: false
+            ServerSideEncryptionByDefault: 
+              SSEAlgorithm: "aws:kms"
+              KMSMasterKeyID: !GetAtt S3BucketKMSKey.Arn
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+
+  S3BucketPolicy:
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F16
+            reason: "We can allow * for the Principal as we are limiting access to the Org via a Condition."
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:       
+          - Sid: DenyExternalPrincipals
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource: 
+              - !Sub arn:aws:s3:::${S3Bucket}
+              - !Sub arn:aws:s3:::${S3Bucket}/*
+            Condition:
+              StringNotEquals:
+                aws:PrincipalOrgID: !Ref OrganizationId
+          - Sid: SecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource: !Sub arn:aws:s3:::${S3Bucket}/*
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+          - Sid: ProtectBucketDeletion
+            Action:
+              - s3:DeleteBucket
+            Effect: Deny
+            Resource: 
+              !Sub 'arn:aws:s3:::${S3Bucket}'
+            Principal: 
+              AWS: "*"
+            Condition:
+              ArnNotLike:
+                aws:PrincipalArn: 
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
+                  - !Ref ICAutomationAdminArn
+          - Sid: AllowObjectUpdate
+            Action:
+              - s3:DeleteObject
+              - s3:DeleteObjectVersion
+              - s3:PutObject
+              - s3:PutObjectAcl
+              - s3:PutObjectTagging
+            Effect: Deny
+            Principal: "*"
+            Resource: 
+              !Sub arn:aws:s3:::${S3Bucket}/*
+            Condition:
+              ArnNotLike:
+                aws:PrincipalArn: 
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
+                  - !Ref ICAutomationAdminArn
+          - Sid: OnlyUpdatePolicy
+            Action:
+              - s3:PutBucketPolicy
+              - s3:DeleteBucketPolicy
+            Effect: Deny
+            Principal: "*"
+            Resource: 
+              !Sub arn:aws:s3:::${S3Bucket}
+            Condition:
+              ArnNotLike:
+                aws:PrincipalArn: 
+                  - !Ref ICAutomationAdminArn
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
+          - Sid: require_kms_encryption_on_puts
+            Action:
+              - s3:PutObject
+            Effect: Deny
+            Principal: "*"
+            Resource: 
+              - !Sub 'arn:aws:s3:::${S3Bucket}/*'
+            Condition:
+              StringNotLikeIfExists:
+                s3:x-amz-server-side-encryption-aws-kms-key-id: 
+                  - !GetAtt S3BucketKMSKey.Arn
+
+  S3BucketKMSKey:
+    Type: "AWS::KMS::Key"
+    Properties: 
+      Description: Identity Center(IC) mapping bucket Server-side encryption KMS Key
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: keypolicy
+        Statement:
+          - Sid: KMS Admin Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Ref ICKMSAdminArn  
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: Key management Permissions
+            Effect: Allow
+            Principal:
+              AWS: 
+                - !Ref ICAutomationAdminArn
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
+            Action: 
+              - "kms:CancelKeyDeletion"
+              - "kms:Create*"
+              - "kms:Delete*"
+              - "kms:Describe*"
+              - "kms:Disable*"
+              - "kms:Enable*"
+              - "kms:GenerateDataKey"
+              - "kms:Get*"
+              - "kms:List*"
+              - "kms:Put*"
+              - "kms:Revoke*"
+              - "kms:ScheduleKeyDeletion"
+              - "kms:TagResource"
+              - "kms:UntagResource"
+            Resource: "*"
+          - Sid: Lambda Permissions
+            Effect: Allow
+            Principal:
+              AWS: "*"
+            Action: 
+              - "kms:Describe*"
+              - "kms:List*"
+              - "kms:Get*"
+              - "kms:Encrypt"
+              - "kms:Decrypt"
+              - "kms:ReEncrypt*"
+              - "kms:GenerateDataKey"
+            Resource: "*" 
+            Condition:
+              ForAnyValue:ArnLike:
+                aws:PrincipalARN:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
+                  #IAM Role ARN of IAM Identity Center automation Lambda functions
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICPermissionSetAutomationLambdaRole"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAssignmentAutomationLambdaRole"
+          # - Sid: Allow desribe key permission for other monitor roles
+          #   Effect: Allow
+          #   Principal:
+          #     AWS:
+          #       - !Sub "arn:aws:iam::${AWS::AccountId}:role/aws-service-role/access-analyzer.amazonaws.com/AWSServiceRoleForAccessAnalyzer"
+          #   Action:
+          #     - "kms:Describe*"
+          #     - "kms:Get*"
+          #     - "kms:List*"
+          #   Resource: "*"
+          - Sid: Allow lambda to using objects from S3
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 
+              - "kms:Decrypt"
+              - "kms:DescribeKey"
+              - "kms:Encrypt"
+              - "kms:GenerateDataKey"
+              - "kms:GenerateDataKeyWithoutPlaintext"
+              - "kms:ReEncrypt*"
+            Resource: "*"
+            Condition:
+              StringEquals:
+                "kms:ViaService": !Sub "lambda.${AWS::Region}.amazonaws.com"
+          - Sid: Allow alias creation during setup
+            Effect: Allow
+            Principal:
+              AWS: "*"
+            Action: "kms:CreateAlias"
+            Resource: "*"
+            Condition:
+              StringEquals:
+                "kms:CallerAccount": !Sub "${AWS::AccountId}"
+                "kms:ViaService": !Sub "cloudformation.${AWS::Region}.amazonaws.com"
+
+  S3globalAssetKMSKeyAlias:
+    Type: "AWS::KMS::Alias"
+    Properties: 
+      AliasName:  "alias/ic-mapping-s3-bucket-key"
+      TargetKeyId: !GetAtt  S3BucketKMSKey.Arn
