@@ -163,7 +163,13 @@ These 2 event rules will trigger the lambda function when AWS detects manual wri
 
 ## Examples of mapping files
 1. Example of permission-set file (random account ids):
+
+    Note: This solution(version 1.1.0 or newer) supports advanced customer managed policy feature in the permission-set definition file:
+    1. Only use "CustomerPolicies" object in the definition file if you need to apply customer managed policy to your permission-set.
+    2. When you create a permission set with a customer managed policy, you MUST create an IAM policy with the same name and path in each AWS account where IAM Identity Center assigns your permission set. If you are specifying a custom path, make sure to specify the same path in each AWS account.
+
 ```
+
 {
     "Name": "1-example-admin",
     "Description": "1-example-admin",
@@ -179,6 +185,16 @@ These 2 event rules will trigger the lambda function when AWS detects manual wri
             "Arn": "arn:aws:iam::aws:policy/AdministratorAccess"
         }
     ],
+    "CustomerPolicies": [
+        {
+            "Name": "customer-managed-policy-1",
+            "Path": "/IAM-path-example/"
+        },
+        {
+            "Name": "customer-managed-policy-2",
+            "Path": "/"
+        }
+    ], 
     "InlinePolicies": []
 }
 
