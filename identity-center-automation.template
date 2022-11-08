@@ -37,6 +37,11 @@ Parameters:
   SNSEmailEndpointSubscription:
     Description: The SNS subscription which used to receive SNS email notification.
     Type: String
+  SessionDuration:
+    Description: The length of time that the application user sessions are valid for in the ISO-8601 standard. Default is 3 hours.
+    Type: String
+    AllowedPattern: ^(-?)P(?=\d|T\d)(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)([DW]))?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$
+    Default: PT3H
   ICAutomationAdminArn:
     Type: String
     Description: >-
@@ -60,7 +65,8 @@ Resources:
       Environment:
         Variables:
           IC_InstanceArn: !Ref ICInstanceARN
-          IC_S3_BucketName: !Ref ICMappingBucketName        
+          IC_S3_BucketName: !Ref ICMappingBucketName
+          Session_Duration: !Ref SessionDuration
           SNS_Topic_Name:  'ic-automation-topic'
           Lambda_Region: !Ref "AWS::Region"
       MemorySize: 256

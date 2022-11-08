@@ -1,6 +1,7 @@
 {
     "Name": "1-example-admin",
     "Description": "1-example-admin",
+    "Session_Duration": "PT12H", 
     "Tags": [
         {
             "Key": "identity-center-solution",

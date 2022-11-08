@@ -27,6 +27,7 @@ sns_client = boto3.client('sns',region_name=runtime_region)
 sns_topic_name=os.environ.get('SNS_Topic_Name')
 ic_admin = boto3.client('sso-admin',region_name=runtime_region)
 ic_instance_arn = os.environ.get('IC_InstanceArn')
+default_session_duration = os.environ.get('Session_Duration')
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -103,13 +104,14 @@ def get_all_json_files(bucket_name, pipeline_id):
     return file_contents
 
 
-def create_permission_set(name, desc, tags, pipeline_id):
+def create_permission_set(name, desc, tags, session_duration, pipeline_id):
     """Create a permission set in AWS IAM Identity Center"""
     try:
         response = ic_admin.create_permission_set(
             Name=name,
             Description=desc,
             InstanceArn=ic_instance_arn,
+            SessionDuration=session_duration,
             Tags=tags
         )
         sleep(0.1)  # Aviod hitting API limit.
@@ -425,7 +427,7 @@ def delete_permission_set(perm_set_arn, perm_set_name, pipeline_id):
         )
 
 
-def sync_description(perm_set_arn, local_desc, aws_desc):
+def sync_description(perm_set_arn, local_desc, aws_desc, session_duration):
     """Synchronize the description between the JSON file and AWS service"""
     if not local_desc == aws_desc:
         try:
@@ -433,6 +435,7 @@ def sync_description(perm_set_arn, local_desc, aws_desc):
             ic_admin.update_permission_set(
                 InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn,
+                SessionDuration=session_duration,
                 Description=local_desc
             )
             sleep(0.1)  # Aviod hitting API limit.
@@ -675,25 +678,28 @@ def sync_json_with_aws(local_files, aws_permission_sets, pipeline_id):
     local_customer_policies = []
     try:
         for local_file in local_files:
+            local_session_duration = default_session_duration
             local_permission_set = local_files[local_file]
             local_name = local_permission_set['Name']
             local_desc = local_permission_set['Description']
             local_tags = local_permission_set['Tags']
             local_managed_policies = local_permission_set['ManagedPolicies']
-            # Customer managed policy is optional
-            print("local_permission_set")
-            print(local_permission_set)
-            if "CustomerPolicies" in local_permission_set.keys():
-                local_customer_policies = local_permission_set['CustomerPolicies']
             local_inline_policy = local_permission_set['InlinePolicies']
             local_permission_set_names.append(local_name)
+
+            # Customer managed policy is optional
+            if "CustomerPolicies" in local_permission_set.keys():
+                local_customer_policies = local_permission_set['CustomerPolicies']
+            # Session Duration is optional
+            if "Session_Duration" in local_permission_set.keys():
+                local_session_duration = local_permission_set["Session_Duration"]
 
             # If Permission Set does not exist in AWS - add it.
             if local_name in aws_permission_sets:
                 logger.info('%s exists in IAM Identity Center - checking policy and configuration', local_name)
             else:
                 logger.info('ADD OPERATION: %s does not exist in IAM Identity Center - adding...', local_name)
-                created_perm_set = create_permission_set(local_name, local_desc, local_tags, pipeline_id)
+                created_perm_set = create_permission_set(local_name, local_desc, local_tags, local_session_duration, pipeline_id)
                 created_perm_set_name = created_perm_set['PermissionSet']['Name']
                 created_perm_set_arn = created_perm_set['PermissionSet']['PermissionSetArn']
                 created_perm_set_desc = created_perm_set['PermissionSet']['Description']
@@ -706,7 +712,7 @@ def sync_json_with_aws(local_files, aws_permission_sets, pipeline_id):
             sync_managed_policies(local_managed_policies, aws_permission_sets[local_name]['Arn'], pipeline_id)
             sync_customer_policies(local_customer_policies,aws_permission_sets[local_name]['Arn'], pipeline_id)
             sync_inline_policies(local_inline_policy, aws_permission_sets[local_name]['Arn'], pipeline_id)
-            sync_description(aws_permission_sets[local_name]['Arn'], local_desc, aws_permission_sets[local_name]['Description'])
+            sync_description(aws_permission_sets[local_name]['Arn'], local_desc, aws_permission_sets[local_name]['Description'],local_session_duration)
             sync_tags(local_name, local_tags, aws_permission_sets[local_name]['Arn'])
             reprovision_permission_sets(local_name, aws_permission_sets[local_name]['Arn'], pipeline_id)
 
