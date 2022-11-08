@@ -2,6 +2,15 @@
 #pylint: disable=C0301
 #pylint: disable=W1202,W0703
 #pylint: disable=E0401
+
+####################################################################
+# A workaround of upgrade the boto3 version in the lambda function #
+####################################################################
+# import sys
+# from pip._internal import main
+# main(['install', '-I', '-q', 'boto3', '--target', '/tmp/', '--no-cache-dir', '--disable-pip-version-check'])
+# sys.path.insert(0,'/tmp/')
+
 import os
 import json
 import logging
@@ -172,6 +181,66 @@ def remove_managed_policy_from_perm_set(perm_set_arn, managed_policy_arn, pipeli
     return remove_managed_policy
 
 
+def add_cx_managed_policy_to_perm_set (perm_set_arn, policy_name,
+                                       policy_path, pipeline_id):
+    """Attach a customer managed policy to a permission set"""
+    try:
+        attach_cx_managed_policy = ic_admin.attach_customer_managed_policy_reference_to_permission_set(
+            InstanceArn=ic_instance_arn,
+            PermissionSetArn=perm_set_arn,
+            CustomerManagedPolicyReference={
+                'Name': policy_name,
+                'Path': policy_path
+            }
+        )
+        logger.info('Customer Managed Policy %s added to %s', policy_path,
+                    perm_set_arn)
+        sleep(0.1)  # Aviod hitting API limit.
+
+    except ic_admin.exceptions.ThrottlingException as error:
+        logger.warning("%s.Hit API limits. Sleep 2s.", error)
+        sleep(2)
+    except ic_admin.exceptions.ConflictException as error:
+        logger.info("%s.The same IAM Identity Center process has been started in \
+                    another invocation, skipping...", error)
+    except ClientError as error:
+        logger.error("%s", error)
+        pipeline.put_job_failure_result(
+            jobId=pipeline_id,
+            failureDetails={'message':str(error), 'type': 'JobFailed'}
+        )
+    return attach_cx_managed_policy
+
+
+def remove_cx_managed_policy_from_perm_set(perm_set_arn, policy_name, policy_path,
+                                           pipeline_id):
+    """Remove a customer managed policy from a permission set"""
+    try:
+        remove_cx_managed_policy = ic_admin.detach_customer_managed_policy_reference_from_permission_set(
+            InstanceArn=ic_instance_arn,
+            PermissionSetArn=perm_set_arn,
+            CustomerManagedPolicyReference={
+                'Name': policy_name,
+                'Path': policy_path
+            }
+        )
+        logger.info('Managed Policy %s removed \
+                    from %s', policy_name, perm_set_arn)
+        sleep(0.1)  #Avoid hitting API limit.
+    except ic_admin.exceptions.ThrottlingException as error:
+        logger.warning("%s.Hit API limits. Sleep 2s...", error)
+        sleep(2)
+    except ic_admin.exceptions.ConflictException as error:
+        logger.info("%s.The same IAM Identity Center process has been started in another invocation, skipping...", error)
+    except ClientError as error:
+        logger.error("%s", error)
+        pipeline.put_job_failure_result(
+            jobId=pipeline_id,
+            failureDetails={'message':str(error), 'type': 'JobFailed'}
+        )
+    return remove_cx_managed_policy
+
+
 def sync_managed_policies(local_managed_policies, perm_set_arn, pipeline_id):
     """
     Synchronize Managed Polcieis as defined in the JSON file with AWS
@@ -209,6 +278,58 @@ def sync_managed_policies(local_managed_policies, perm_set_arn, pipeline_id):
                 remove_managed_policy_from_perm_set(perm_set_arn,
                                                     aws_managed_attached_dict[aws_policy],
                                                     pipeline_id)
+    except ic_admin.exceptions.ThrottlingException as error:
+        logger.warning("%s.Hit IAM Identity Center API limits. Sleep 5s.", error)
+        sleep(5)
+    except ic_admin.exceptions.ConflictException as error:
+        logger.info("%s.The same IAM Identity Center process has been started \
+                    in another invocation, skipping...", error)
+        sleep(2)
+    except Exception as error:
+        logger.error("%s", error)
+        pipeline.put_job_failure_result(
+            jobId=pipeline_id,
+            failureDetails={'message':str(error), 'type': 'JobFailed'}
+        )
+
+
+def sync_customer_policies(local_customer_policies, perm_set_arn, pipeline_id):
+    """
+    Synchronize customer managed polcies as defined in the JSON file with AWS
+    Declare arrays for keeping track on custom policies locally and on AWS
+    """    
+    customer_managed_attached_names = []
+    customer_managed_attached_dict = {}
+    local_policy_names = []
+    local_policy_dict = {}
+
+    # Get all the customer managed polcies attached to the permission set.
+    try:
+        list_cx_managed_policies = ic_admin.list_customer_managed_policy_references_in_permission_set(
+            InstanceArn=ic_instance_arn,
+            PermissionSetArn=perm_set_arn
+        )
+        sleep(0.1)  # Aviod hitting API limit.
+
+        # Populate arrays for Customer Managed Policy tracking.
+        for cx_managed_policy in list_cx_managed_policies['CustomerManagedPolicyReferences']:
+            customer_managed_attached_names.append(cx_managed_policy['Name'])
+            customer_managed_attached_dict[cx_managed_policy['Name']] = cx_managed_policy['Path']
+
+        for local_managed_policy in local_customer_policies:
+            local_policy_names.append(local_managed_policy['Name'])
+            local_policy_dict[local_managed_policy['Name']] = local_managed_policy['Path']
+
+        # Iterate local policy dictionary(key and value):
+        for policy_name, policy_path in local_policy_dict.items():
+            if not policy_name in customer_managed_attached_names:
+                add_cx_managed_policy_to_perm_set(perm_set_arn, policy_name,
+                                                  policy_path, pipeline_id)
+
+        for ex_policy_name, ex_policy_path in customer_managed_attached_dict.items():
+            if not ex_policy_name in local_policy_names:
+                remove_cx_managed_policy_from_perm_set(perm_set_arn,ex_policy_name,
+                                                       ex_policy_path, pipeline_id)
     except ic_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit IAM Identity Center API limits. Sleep 5s.", error)
         sleep(5)
@@ -551,6 +672,7 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn, pipeline_id):
 def sync_json_with_aws(local_files, aws_permission_sets, pipeline_id):
     """Synchronize the repository's json files with the AWS Permission Sets"""
     local_permission_set_names = []
+    local_customer_policies = []
     try:
         for local_file in local_files:
             local_permission_set = local_files[local_file]
@@ -558,6 +680,11 @@ def sync_json_with_aws(local_files, aws_permission_sets, pipeline_id):
             local_desc = local_permission_set['Description']
             local_tags = local_permission_set['Tags']
             local_managed_policies = local_permission_set['ManagedPolicies']
+            # Customer managed policy is optional
+            print("local_permission_set")
+            print(local_permission_set)
+            if "CustomerPolicies" in local_permission_set.keys():
+                local_customer_policies = local_permission_set['CustomerPolicies']
             local_inline_policy = local_permission_set['InlinePolicies']
             local_permission_set_names.append(local_name)
 
@@ -575,8 +702,9 @@ def sync_json_with_aws(local_files, aws_permission_sets, pipeline_id):
                     'Description': created_perm_set_desc
                     }
 
-            # Synchronize managed and inline policies for all local permission sets with AWS
+            # Synchronize managed and inline policies for all local permission sets with AWS.
             sync_managed_policies(local_managed_policies, aws_permission_sets[local_name]['Arn'], pipeline_id)
+            sync_customer_policies(local_customer_policies,aws_permission_sets[local_name]['Arn'], pipeline_id)
             sync_inline_policies(local_inline_policy, aws_permission_sets[local_name]['Arn'], pipeline_id)
             sync_description(aws_permission_sets[local_name]['Arn'], local_desc, aws_permission_sets[local_name]['Description'])
             sync_tags(local_name, local_tags, aws_permission_sets[local_name]['Arn'])
