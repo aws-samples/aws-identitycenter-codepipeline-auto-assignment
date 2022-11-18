@@ -165,9 +165,11 @@ These 2 event rules will trigger the lambda function when AWS detects manual wri
 1. Example of permission set file (random account ids):
 
     Note: This solution(version 1.1.0 or newer) supports 1)customer managed policy and 2) session duration feature in the permission set definition file:
-    1. Only use "CustomerPolicies" object in the definition file if you need to apply customer managed policy to your permission set. When you create a permission set with a customer managed policy, you MUST create an IAM policy with the same name and path in each AWS account where IAM Identity Center assigns your permission set. If you are specifying a custom path, make sure to specify the same path in each AWS account.
-    2. Only use "CustomerPolicies" object in the definition file if you need to apply custom session duration for certain permission set as the following example. You can set your default permission set "SessionDuration" in the identity-center-automation.template or using identity-center-stacks-parameters.json file. 
-        - To change the "Session_Duration" on existing permission set: 1) Recreate the permission set using CICD pipeline 2) Update the both  "Session_Duration" and "Description" section in the definition file. 
+    1. Only use the "CustomerPolicies" object in the definition file if you need to apply customer managed policy to your permission set. When you create a permission the set with a customer managed policy, you MUST create an IAM policy with the same name and path in each AWS account where IAM Identity Center assigns your permission set. If you are specifying a custom path, make sure to specify the same path in each AWS account.
+    2. You can apply custom permission set *session duration* for selected permission by adding "Session_Duration" in the mapping file (e.g 1-example-admin). You can set your own default permission set "SessionDuration" in the identity-center-automation.template or using identity-center-stacks-parameters.json file, current default value is 1 hour.
+        - To change the "Session_Duration" on existing permission set: 
+            - Option 1) Recreate the permission set using CICD pipeline 
+            - Option 2) Update the both  "Session_Duration" and "Description" section in the definition file and re-run the pipeline.
 
 ```
 

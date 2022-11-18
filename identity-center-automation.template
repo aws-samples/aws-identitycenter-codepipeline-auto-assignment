@@ -38,10 +38,10 @@ Parameters:
     Description: The SNS subscription which used to receive SNS email notification.
     Type: String
   SessionDuration:
-    Description: The length of time that the application user sessions are valid for in the ISO-8601 standard. Default is 3 hours.
+    Description: The length of time that the application user sessions are valid for in the ISO-8601 standard. Default is 1 hours.
     Type: String
     AllowedPattern: ^(-?)P(?=\d|T\d)(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)([DW]))?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$
-    Default: PT3H
+    Default: PT1H
   ICAutomationAdminArn:
     Type: String
     Description: >-
