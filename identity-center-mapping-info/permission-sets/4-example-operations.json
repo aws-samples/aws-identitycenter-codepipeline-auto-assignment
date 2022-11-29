@@ -17,10 +17,6 @@
             "Arn": "arn:aws:iam::aws:policy/job-function/SupportUser"
         },
         {
-            "Name": "AWSCodePipelineReadOnlyAccess",
-            "Arn": "arn:aws:iam::aws:policy/AWSCodePipelineReadOnlyAccess"
-        },
-        {
             "Name": "CloudWatchLogsReadOnlyAccess",
             "Arn": "arn:aws:iam::aws:policy/CloudWatchLogsReadOnlyAccess"
         }
