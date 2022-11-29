@@ -1,7 +1,7 @@
 # CHANGELOG
 
 ## 1.0.0
-   -  initial push
+   -  initial push.
 
 ## 1.1.0
    - Updated auto-permissionsets.py file to support customer managed policy in permission set.
