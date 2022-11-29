@@ -21,5 +21,15 @@
             "Arn": "arn:aws:iam::aws:policy/AWSSupportAccess"
         }
     ],
+    "CustomerPolicies": [
+        {
+            "Name": "customer-managed-policy-1",
+            "Path": "/IAM-path-example/"
+        },
+        {
+            "Name": "customer-managed-policy-2",
+            "Path": "/"
+        }
+    ], 
     "InlinePolicies": []
 }
