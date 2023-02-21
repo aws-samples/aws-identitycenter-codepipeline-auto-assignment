@@ -17,26 +17,104 @@ Parameters:
   ICAutomationAdminArn:
     Type: String
     Description: >-
-      The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user) 
+      The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user)
       will have permissions to manage S3 bucket, besides ICAutoPipelineCodeBuildRole.
   ICKMSAdminArn:
     Type: String
     Description: >-
       The ARN of IAM role(or user) which will have permissions to manage the IAM Identity Center KMS
       key, besides ICAutoPipelineCodeBuildRole.
+  createICKMSAdminRole:
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+    Default: "false"
+    Description: Parameter to check if user wants to create Identity Center KMS Admin if one does not exist already
+  createICAdminRole:
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+    Default: "false"
+    Description: Parameter to check if user wants to create Identity Center Admin if one does not exist already
+
+Conditions:
+  CreateICKMSAdminRoleEqualsTrue: !Equals [!Ref createICKMSAdminRole, "true"]
+  CreateICAdminRoleEqualsTrue: !Equals [!Ref createICAdminRole, "true"]
 
 Resources:
+  ###################################################################################
+  # ICAdmin Role to administer Identity Center without triggering the notifications #
+  ###################################################################################
+  ICAdminRole:
+    Type: "AWS::IAM::Role"
+    Condition: CreateICAdminRoleEqualsTrue
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: ICAdminPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: SSOIAMAdminActions
+                Effect: Allow
+                Action:
+                  - "sso:*"
+                  - "iam:*"
+                Resource: "*"
+              - Sid: S3EssentialObjectActions
+                Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                Resource: !Sub "arn:aws:s3:::${ICMappingBucketName}-${AWS::AccountId}-${AWS::Region}/*"
+              - Sid: S3EssentialBucketAction
+                Effect: Allow
+                Action:
+                  - "s3:ListBucket"
+                Resource: !Sub "arn:aws:s3:::${ICMappingBucketName}-${AWS::AccountId}-${AWS::Region}"
+
+  ICKMSAdminRole:
+    Type: "AWS::IAM::Role"
+    Condition: CreateICKMSAdminRoleEqualsTrue
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: ICKMSAdminPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "kms:*"
+                Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*"
   S3Bucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Delete
     Properties:
-      BucketName: !Ref ICMappingBucketName 
-      VersioningConfiguration: 
+      BucketName: !Sub "${ICMappingBucketName}-${AWS::AccountId}-${AWS::Region}"
+      VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - BucketKeyEnabled: false
-            ServerSideEncryptionByDefault: 
+            ServerSideEncryptionByDefault:
               SSEAlgorithm: "aws:kms"
               KMSMasterKeyID: !GetAtt S3BucketKMSKey.Arn
       PublicAccessBlockConfiguration:
@@ -56,12 +134,12 @@ Resources:
       Bucket: !Ref S3Bucket
       PolicyDocument:
         Version: 2012-10-17
-        Statement:       
+        Statement:
           - Sid: DenyExternalPrincipals
             Effect: Deny
             Principal: "*"
             Action: "s3:*"
-            Resource: 
+            Resource:
               - !Sub arn:aws:s3:::${S3Bucket}
               - !Sub arn:aws:s3:::${S3Bucket}/*
             Condition:
@@ -79,15 +157,17 @@ Resources:
             Action:
               - s3:DeleteBucket
             Effect: Deny
-            Resource: 
-              !Sub 'arn:aws:s3:::${S3Bucket}'
-            Principal: 
+            Resource: !Sub "arn:aws:s3:::${S3Bucket}"
+            Principal:
               AWS: "*"
             Condition:
               ArnNotLike:
-                aws:PrincipalArn: 
+                aws:PrincipalArn:
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
-                  - !Ref ICAutomationAdminArn
+                  - !If
+                    - CreateICAdminRoleEqualsTrue
+                    - !GetAtt ICAdminRole.Arn
+                    - !Ref ICAutomationAdminArn
           - Sid: AllowObjectUpdate
             Action:
               - s3:DeleteObject
@@ -97,41 +177,45 @@ Resources:
               - s3:PutObjectTagging
             Effect: Deny
             Principal: "*"
-            Resource: 
-              !Sub arn:aws:s3:::${S3Bucket}/*
+            Resource: !Sub arn:aws:s3:::${S3Bucket}/*
             Condition:
               ArnNotLike:
-                aws:PrincipalArn: 
+                aws:PrincipalArn:
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
-                  - !Ref ICAutomationAdminArn
+                  - !If
+                    - CreateICAdminRoleEqualsTrue
+                    - !GetAtt ICAdminRole.Arn
+                    - !Ref ICAutomationAdminArn
           - Sid: OnlyUpdatePolicy
             Action:
               - s3:PutBucketPolicy
               - s3:DeleteBucketPolicy
             Effect: Deny
             Principal: "*"
-            Resource: 
-              !Sub arn:aws:s3:::${S3Bucket}
+            Resource: !Sub arn:aws:s3:::${S3Bucket}
             Condition:
               ArnNotLike:
-                aws:PrincipalArn: 
-                  - !Ref ICAutomationAdminArn
+                aws:PrincipalArn:
+                  - !If
+                    - CreateICAdminRoleEqualsTrue
+                    - !GetAtt ICAdminRole.Arn
+                    - !Ref ICAutomationAdminArn
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
           - Sid: require_kms_encryption_on_puts
             Action:
               - s3:PutObject
             Effect: Deny
             Principal: "*"
-            Resource: 
-              - !Sub 'arn:aws:s3:::${S3Bucket}/*'
+            Resource:
+              - !Sub "arn:aws:s3:::${S3Bucket}/*"
             Condition:
               StringNotLikeIfExists:
-                s3:x-amz-server-side-encryption-aws-kms-key-id: 
+                s3:x-amz-server-side-encryption-aws-kms-key-id:
                   - !GetAtt S3BucketKMSKey.Arn
 
   S3BucketKMSKey:
     Type: "AWS::KMS::Key"
-    Properties: 
+    Properties:
       Description: Identity Center(IC) mapping bucket Server-side encryption KMS Key
       EnableKeyRotation: true
       KeyPolicy:
@@ -141,16 +225,23 @@ Resources:
           - Sid: KMS Admin Permissions
             Effect: Allow
             Principal:
-              AWS: !Ref ICKMSAdminArn  
+              AWS:
+                - !If
+                  - CreateICKMSAdminRoleEqualsTrue
+                  - !GetAtt ICKMSAdminRole.Arn
+                  - !Ref ICKMSAdminArn
             Action: "kms:*"
             Resource: "*"
           - Sid: Key management Permissions
             Effect: Allow
             Principal:
-              AWS: 
-                - !Ref ICAutomationAdminArn
+              AWS:
+                - !If
+                  - CreateICAdminRoleEqualsTrue
+                  - !GetAtt ICAdminRole.Arn
+                  - !Ref ICAutomationAdminArn
                 - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
-            Action: 
+            Action:
               - "kms:CancelKeyDeletion"
               - "kms:Create*"
               - "kms:Delete*"
@@ -170,7 +261,7 @@ Resources:
             Effect: Allow
             Principal:
               AWS: "*"
-            Action: 
+            Action:
               - "kms:Describe*"
               - "kms:List*"
               - "kms:Get*"
@@ -178,7 +269,7 @@ Resources:
               - "kms:Decrypt"
               - "kms:ReEncrypt*"
               - "kms:GenerateDataKey"
-            Resource: "*" 
+            Resource: "*"
             Condition:
               ForAnyValue:ArnLike:
                 aws:PrincipalARN:
@@ -200,7 +291,7 @@ Resources:
             Effect: Allow
             Principal:
               Service: lambda.amazonaws.com
-            Action: 
+            Action:
               - "kms:Decrypt"
               - "kms:DescribeKey"
               - "kms:Encrypt"
@@ -224,6 +315,25 @@ Resources:
 
   S3globalAssetKMSKeyAlias:
     Type: "AWS::KMS::Alias"
-    Properties: 
-      AliasName:  "alias/ic-mapping-s3-bucket-key"
-      TargetKeyId: !GetAtt  S3BucketKMSKey.Arn
+    Properties:
+      AliasName: "alias/ic-mapping-s3-bucket-key"
+      TargetKeyId: !GetAtt S3BucketKMSKey.Arn
+Outputs:
+  ICKMSAdminRole:
+    Value:
+      Fn::If:
+        - CreateICKMSAdminRoleEqualsTrue
+        - !GetAtt ICKMSAdminRole.Arn
+        - !Ref ICKMSAdminArn
+    Description: The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user) will have permissions to update IAM Identity Center settings without trigger the SNS notification, besides the ICAssignmentAutomationLambdaRole and ICPermissionSetAutomationLambdaRole.
+    Export:
+      Name: ICKMSAdminRoleArn
+  ICAdminRole:
+    Value:
+      Fn::If:
+        - CreateICAdminRoleEqualsTrue
+        - !GetAtt ICAdminRole.Arn
+        - !Ref ICAutomationAdminArn
+    Description: The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user) will have permissions to update IAM Identity Center settings without trigger the SNS notification, besides the ICAssignmentAutomationLambdaRole and ICPermissionSetAutomationLambdaRole.
+    Export:
+      Name: ICAdminRoleArn

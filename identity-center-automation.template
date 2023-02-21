@@ -20,7 +20,7 @@ Parameters:
     Description: >-
       The S3 bucket that stores the lambda code as well as permission set and
       mapping definition. It's the same name that is used in
-      identity-center-s3-bucket.template.
+      identity-center-s3-bucket.template and the one you have specified in identity-center-stacks-parameters.json.
     Type: String
   AssignmentLambdaZipFileName:
     Description: >-
@@ -45,37 +45,91 @@ Parameters:
   ICAutomationAdminArn:
     Type: String
     Description: >-
-      The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user) 
-      will have permissions to update IAM Identity Center settings without trigger the SNS notification, 
+      The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user)
+      will have permissions to update IAM Identity Center settings without trigger the SNS notification,
       besides the ICAssignmentAutomationLambdaRole and ICPermissionSetAutomationLambdaRole.
+  OrgManagementAccount:
+    Type: String
+    Description: Account ID of the management account. Used only to ignore the assignments for management account creaated in the management account and the solution is deployed in delegated administrator acount.
+  AdminDelegated:
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+    Default: "false"
+    Description: Parameter to check if an AWS account is delegated as an Administrator for Identity Center
+  ControlTowerEnabled:
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+    Default: "false"
+    Description: Parameter to check if Control Tower is deployed
+Conditions:
+  AdminDelegatedEqualsTrue: !Equals [!Ref AdminDelegated, "true"]
+  IsICAutomationAdminArnEmpty: !Equals [!Ref ICAutomationAdminArn, ""]
+  ControlTowerEnabledEqualsTrue: !Equals [!Ref ControlTowerEnabled, "true"]
+  CTorAdminDelegated:
+      !Or [Condition: ControlTowerEnabledEqualsTrue, Condition: AdminDelegatedEqualsTrue]
 
 Resources:
-######################################################
-# Lambda function(1) that manages IC permission sets #
-######################################################
+  #######################################################################
+  # DynamoDB table to store skipped permission sets, if admin delegated #
+  #######################################################################
+  SkippedPermissionSetsTable:
+    Type: AWS::DynamoDB::Table
+    Condition: CTorAdminDelegated
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: perm_set_arn
+          AttributeType: S
+      KeySchema:
+        - AttributeName: perm_set_arn
+          KeyType: HASH
+      TableName: ic-SkippedPermissionSetsTable
+      BillingMode: PAY_PER_REQUEST
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+  ######################################################
+  # Lambda function(1) that manages IC permission sets #
+  ######################################################
   ICPermissionSetAutomationLambda:
-    Type: 'AWS::Lambda::Function'
+    Type: "AWS::Lambda::Function"
     Properties:
       FunctionName: ic-permissionsets-enabler
       Handler: auto-permissionsets.lambda_handler
       Code:
-        S3Bucket: !Ref ICMappingBucketName
-        S3Key: !Ref   PermissionSetsLambdaZipFileName
+        S3Bucket: !Join
+          - "-"
+          - - !Ref ICMappingBucketName
+            - !Sub ${AWS::AccountId}
+            - !Sub ${AWS::Region}
+        S3Key: !Ref PermissionSetsLambdaZipFileName
       Runtime: "python3.9"
       Environment:
         Variables:
           IC_InstanceArn: !Ref ICInstanceARN
-          IC_S3_BucketName: !Ref ICMappingBucketName
+          IC_S3_BucketName: !Join
+            - "-"
+            - - !Ref ICMappingBucketName
+              - !Sub ${AWS::AccountId}
+              - !Sub ${AWS::Region}
           Session_Duration: !Ref SessionDuration
-          SNS_Topic_Name:  'ic-automation-topic'
+          SNS_Topic_Name: "ic-automation-topic"
           Lambda_Region: !Ref "AWS::Region"
+          Org_Management_Account: !Ref OrgManagementAccount
+          AdminDelegated: !Ref AdminDelegated
+          SkippedPermissionSetsTableName: !If
+            - CTorAdminDelegated
+            - !Ref SkippedPermissionSetsTable
+            - ""
       MemorySize: 256
       Timeout: 900
       Role: !GetAtt
         - ICPermissionSetAutomationLambdaRole
         - Arn
   ICPermissionSetAutomationLambdaRole:
-    Type: 'AWS::IAM::Role'
+    Type: "AWS::IAM::Role"
     Properties:
       RoleName: ICPermissionSetAutomationLambdaRole
       AssumeRolePolicyDocument:
@@ -85,7 +139,7 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action:
-              - 'sts:AssumeRole'
+              - "sts:AssumeRole"
       Path: /
       Policies:
         - PolicyName: ICPermissionSetAutomationLambdaRolePolicy
@@ -94,69 +148,87 @@ Resources:
               - Sid: EssentialActions
                 Effect: Allow
                 Action:
-                  - 'sso:*'               
-                  - 'codepipeline:PutJobFailureResult'                     
-                  - 'codepipeline:PutJobSuccessResult'
-                  - 'logs:CreateLogDelivery'
-                  - 'logs:CreateLogGroup'
-                  - 'logs:CreateLogStream'
-                  - 'logs:DeleteLogDelivery'
-                  - 'logs:DescribeLogGroups'
-                  - 'logs:DescribeLogStreams'
-                  - 'logs:PutLogEvents'
-                  - 'ssm:GetParameter'  
-                Resource: '*'
+                  - "sso:*"
+                  - "codepipeline:PutJobFailureResult"
+                  - "codepipeline:PutJobSuccessResult"
+                  - "logs:CreateLogDelivery"
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:DeleteLogDelivery"
+                  - "logs:DescribeLogGroups"
+                  - "logs:DescribeLogStreams"
+                  - "logs:PutLogEvents"
+                  - "ssm:GetParameter"
+                  - "dynamodb:PutItem"
+                  - "dynamodb:DeleteItem"
+                  - "dynamodb:BatchWriteItem"
+                  - "dynamodb:Scan"
+                Resource: "*"
               - Sid: S3EssentialObjectActions
                 Effect: Allow
                 Action:
-                  - 's3:GetObject'    
-                  - 's3:PutObject'
-                  - 's3:PutObjectAcl'                  
-                Resource: !Sub 'arn:aws:s3:::${ICMappingBucketName}/*'
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                  - "s3:PutObjectAcl"
+                Resource: !Sub "arn:aws:s3:::${ICMappingBucketName}-${AWS::AccountId}-${AWS::Region}/*"
               - Sid: S3EssentialBucketAction
                 Effect: Allow
                 Action:
-                  - 's3:ListBucket'
-                Resource: !Sub 'arn:aws:s3:::${ICMappingBucketName}'
+                  - "s3:ListBucket"
+                Resource: !Sub "arn:aws:s3:::${ICMappingBucketName}-${AWS::AccountId}-${AWS::Region}"
               - Sid: KMSEssentialActions
                 Effect: Allow
                 Action:
-                  - 'kms:Encrypt'       
-                  - 'kms:Decrypt'               
-                Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*" 
+                  - "kms:Encrypt"
+                  - "kms:Decrypt"
+                Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*"
               - Sid: SNSPublishAction
                 Effect: Allow
                 Action:
-                  - 'sns:Publish'                    
-                Resource: '*'
+                  - "sns:Publish"
+                Resource: "*"
 
-#########################################################################
-# Lambda function(2) that manages IAM Identity Center account assignment #
-##########################################################################
+  #########################################################################
+  # Lambda function(2) that manages IAM Identity Center account assignment #
+  ##########################################################################
   ICAssignmentAutomationLambda:
-    Type: 'AWS::Lambda::Function'
+    Type: "AWS::Lambda::Function"
     Properties:
       FunctionName: ic-auto-assignment-enabler
       Handler: auto-assignment.lambda_handler
       Code:
-        S3Bucket: !Ref ICMappingBucketName
+        S3Bucket: !Join
+          - "-"
+          - - !Ref ICMappingBucketName
+            - !Sub ${AWS::AccountId}
+            - !Sub ${AWS::Region}
         S3Key: !Ref AssignmentLambdaZipFileName
       Runtime: "python3.9"
       Environment:
         Variables:
           IC_InstanceArn: !Ref ICInstanceARN
           IdentityStore_Id: !Ref IdentityStoreId
-          IC_S3_BucketName: !Ref ICMappingBucketName
+          IC_S3_BucketName: !Join
+            - "-"
+            - - !Ref ICMappingBucketName
+              - !Sub ${AWS::AccountId}
+              - !Sub ${AWS::Region}
           GlobalFileName: !Ref GlobalICGroupMappingFileName
           TargetFileName: !Ref TargetICGroupMappingFileName
           Lambda_Region: !Ref "AWS::Region"
+          Org_Management_Account: !Ref OrgManagementAccount
+          AdminDelegated: !Ref AdminDelegated
+          SkippedPermissionSetsTableName: !If
+            - CTorAdminDelegated
+            - !Ref SkippedPermissionSetsTable
+            - ""
       MemorySize: 256
       Timeout: 900
       Role: !GetAtt
         - ICAssignmentAutomationLambdaRole
         - Arn
   ICAssignmentAutomationLambdaRole:
-    Type: 'AWS::IAM::Role'
+    Type: "AWS::IAM::Role"
     Properties:
       RoleName: ICAssignmentAutomationLambdaRole
       AssumeRolePolicyDocument:
@@ -166,7 +238,7 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action:
-              - 'sts:AssumeRole'
+              - "sts:AssumeRole"
       Path: /
       Policies:
         - PolicyName: ICAssignmentAutomationLambdaPolicy
@@ -175,53 +247,54 @@ Resources:
               - Sid: EssentialActions
                 Effect: Allow
                 Action:
-                  - 'codepipeline:PutJobFailureResult'
-                  - 'codepipeline:PutJobSuccessResult'
-                  - 'iam:AttachRolePolicy'
-                  - 'iam:CreateRole'
-                  - 'iam:CreateSAMLProvider'
-                  - 'iam:GetRole'
-                  - 'iam:GetSAMLProvider'
-                  - 'iam:ListAttachedRolePolicies'  
-                  - 'iam:ListRolePolicies'
-                  - 'iam:PutRolePolicy'
-                  - 'iam:UpdateSAMLProvider'
-                  - 'identitystore:ListGroups'
-                  - 'logs:CreateLogDelivery'
-                  - 'logs:CreateLogGroup'
-                  - 'logs:CreateLogStream'
-                  - 'logs:DeleteLogDelivery'
-                  - 'logs:DescribeLogGroups'
-                  - 'logs:DescribeLogStreams'
-                  - 'logs:PutLogEvents'
-                  - 'organizations:ListAccounts'
-                  - 'ssm:GetParameter'    
-                  - 'sso:CreateAccountAssignment'
-                  - 'sso:DeleteAccountAssignment'
-                  - 'sso:DescribePermissionSet'
-                  - 'sso:ListAccountAssignments'
-                  - 'sso:ListPermissionSets'
-                  - 'sso:ListTagsForResource'
-                  - 'sso:UpdateSSOConfiguration'
-                Resource: '*'
+                  - "codepipeline:PutJobFailureResult"
+                  - "codepipeline:PutJobSuccessResult"
+                  - "iam:AttachRolePolicy"
+                  - "iam:CreateRole"
+                  - "iam:CreateSAMLProvider"
+                  - "iam:GetRole"
+                  - "iam:GetSAMLProvider"
+                  - "iam:ListAttachedRolePolicies"
+                  - "iam:ListRolePolicies"
+                  - "iam:PutRolePolicy"
+                  - "iam:UpdateSAMLProvider"
+                  - "identitystore:ListGroups"
+                  - "logs:CreateLogDelivery"
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:DeleteLogDelivery"
+                  - "logs:DescribeLogGroups"
+                  - "logs:DescribeLogStreams"
+                  - "logs:PutLogEvents"
+                  - "organizations:ListAccounts"
+                  - "ssm:GetParameter"
+                  - "sso:CreateAccountAssignment"
+                  - "sso:DeleteAccountAssignment"
+                  - "sso:DescribePermissionSet"
+                  - "sso:ListAccountAssignments"
+                  - "sso:ListPermissionSets"
+                  - "sso:ListTagsForResource"
+                  - "sso:UpdateSSOConfiguration"
+                  - "sso:ListAccountsForProvisionedPermissionSet"
+                Resource: "*"
               - Sid: S3EssentialActions
                 Effect: Allow
                 Action:
-                  - 's3:GetObject'       
-                  - 's3:PutObject'
-                  - 's3:PutObjectAcl'                  
-                Resource: !Sub 'arn:aws:s3:::${ICMappingBucketName}/*'
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                  - "s3:PutObjectAcl"
+                Resource: !Sub "arn:aws:s3:::${ICMappingBucketName}-${AWS::AccountId}-${AWS::Region}/*"
               - Sid: KMSEssentialActions
                 Effect: Allow
                 Action:
-                  - 'kms:Encrypt'       
-                  - 'kms:Decrypt'               
-                Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*" 
-##########################################################
-# AWS Event Rules - Trigger Automation by regular actions #
-##########################################################
+                  - "kms:Encrypt"
+                  - "kms:Decrypt"
+                Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*"
+  ##########################################################
+  # AWS Event Rules - Trigger Automation by regular actions #
+  ##########################################################
   ICCreateEventRuleforOrganization:
-    Type: 'AWS::Events::Rule'
+    Type: "AWS::Events::Rule"
     Properties:
       Description: Trigger the automation lambda function
       EventPattern:
@@ -241,11 +314,11 @@ Resources:
         - Arn: !GetAtt ICPermissionSetAutomationLambda.Arn
           Id: TargetFunctionICPermissionSet
 
-###########################################################################################################
-# AWS Event Rules - Detect manual user interaction with the IAM Identity Center - comment line 258-366 to disable#
-############################################################################################################
+  ###########################################################################################################
+  # AWS Event Rules - Detect manual user interaction with the IAM Identity Center - comment line 258-366 to disable#
+  ############################################################################################################
   ICManualActionDetectionRule1:
-    Type: 'AWS::Events::Rule'
+    Type: "AWS::Events::Rule"
     Properties:
       Description: Trigger the automation lambda function when it detects manual user interaction from eventSource sso.amazonaws.com
       EventPattern:
@@ -281,20 +354,23 @@ Resources:
             sessionContext:
               sessionIssuer:
                 userName:
-                  - anything-but: 
-                      - !Ref ICAutomationAdminArn
+                  - anything-but:
+                      - !If
+                        - IsICAutomationAdminArnEmpty
+                        - !ImportValue ICAdminRoleArn
+                        - !Ref ICAutomationAdminArn
                       - ICAssignmentAutomationLambdaRole
                       - ICPermissionSetAutomationLambdaRole
       Name: ICManualActionDetectionRule1
       State: ENABLED
-      Targets: 
+      Targets:
         - Arn: !GetAtt ICPermissionSetAutomationLambda.Arn
           Id: TargetFunctionPermissionSetAutomation
         - Arn: !GetAtt ICAlertSNSNotificationLambda.Arn
           Id: TargetFunctionSSN
 
   ICManualActionDetectionRule2:
-    Type: 'AWS::Events::Rule'
+    Type: "AWS::Events::Rule"
     Properties:
       Description: Trigger the automation lambda function when it detects manual user interaction from eventSource sso-directory.amazonaws.com
       EventPattern:
@@ -305,7 +381,7 @@ Resources:
         detail:
           eventSource:
             - sso-directory.amazonaws.com
-          eventName:                            
+          eventName:
             - AddMemberToGroup
             - CompleteVirtualMfaDeviceRegistration
             - CompleteWebAuthnDeviceRegistration
@@ -342,22 +418,25 @@ Resources:
             sessionContext:
               sessionIssuer:
                 userName:
-                  - anything-but: 
-                      - !Ref ICAutomationAdminArn
+                  - anything-but:
+                      - !If
+                        - IsICAutomationAdminArnEmpty
+                        - !ImportValue ICAdminRoleArn
+                        - !Ref ICAutomationAdminArn
                       - ICAssignmentAutomationLambdaRole
-                      - ICPermissionSetAutomationLambdaRole        
+                      - ICPermissionSetAutomationLambdaRole
       Name: ICManualActionDetectionRule2
       State: ENABLED
-      Targets: 
+      Targets:
         - Arn: !GetAtt ICPermissionSetAutomationLambda.Arn
           Id: TargetFunctionPermissionSetAutomation
         - Arn: !GetAtt ICAlertSNSNotificationLambda.Arn
           Id: TargetFunctionSSN
-  
+
   ICScheduledRuleBaselining:
     Type: AWS::Events::Rule
     Properties:
-      Description:  Schedule CloudWatch event rule (re-baselining) for the lambda function (every 12 hour by default)
+      Description: Schedule CloudWatch event rule (re-baselining) for the lambda function (every 12 hour by default)
       ScheduleExpression: rate(12 hours)
       State: "ENABLED"
       Targets:
@@ -373,15 +452,15 @@ Resources:
         - Endpoint: !Ref SNSEmailEndpointSubscription
           Protocol: email-json
 
-#####################################################
-## Lambda function(3) to customize SNS Email Subject#
-#####################################################
-  ICAlertSNSNotificationLambda:                 
-    Type: 'AWS::Lambda::Function'
+  #####################################################
+  ## Lambda function(3) to customize SNS Email Subject#
+  #####################################################
+  ICAlertSNSNotificationLambda:
+    Type: "AWS::Lambda::Function"
     Properties:
       FunctionName: ic-alert-SNSnotification
       Handler: index.lambda_handler
-      Role: !GetAtt  ICAlertSNSNotificationRole.Arn
+      Role: !GetAtt ICAlertSNSNotificationRole.Arn
       Code:
         ZipFile: |
           import boto3
@@ -403,7 +482,7 @@ Resources:
             except Exception as ex:
               print(ex)
               print("Error.Execution completed incorrectly")
-            return {'statusCode': 200,'body': json.dumps('successfully executed lambda')}        
+            return {'statusCode': 200,'body': json.dumps('successfully executed lambda')}
       Runtime: "python3.9"
       Environment:
         Variables:
@@ -412,7 +491,7 @@ Resources:
       Timeout: 120
 
   ICAlertSNSNotificationRole:
-    Type: 'AWS::IAM::Role'
+    Type: "AWS::IAM::Role"
     Properties:
       RoleName: ICAlertSNSNotificationRole
       AssumeRolePolicyDocument:
@@ -422,7 +501,7 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action:
-              - 'sts:AssumeRole'
+              - "sts:AssumeRole"
       Path: /
       Policies:
         - PolicyName: ICAssignmentAutomationLambdaPolicy
@@ -431,51 +510,51 @@ Resources:
               - Sid: EssentialActions
                 Effect: Allow
                 Action:
-                  - 'sns:Publish'                          
+                  - "sns:Publish"
                 Resource: !Ref SNSICManualActionAlertTopic
               - Sid: CloudWatchLog
                 Effect: Allow
-                Action:   
-                  - 'logs:CreateLogDelivery'
-                  - 'logs:CreateLogGroup'
-                  - 'logs:CreateLogStream'
-                  - 'logs:DeleteLogDelivery'            
-                  - 'logs:DescribeLogGroups'
-                  - 'logs:DescribeLogStreams'
-                  - 'logs:PutLogEvents'
+                Action:
+                  - "logs:CreateLogDelivery"
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:DeleteLogDelivery"
+                  - "logs:DescribeLogGroups"
+                  - "logs:DescribeLogStreams"
+                  - "logs:PutLogEvents"
                 Resource: "*"
-#  Add Lambda permission to AWS event rules
+  #  Add Lambda permission to AWS event rules
   LambdaResourcePermissionForAutoPermissionSetEvent:
-    Type: 'AWS::Lambda::Permission'
+    Type: "AWS::Lambda::Permission"
     DependsOn: ICAlertSNSNotificationLambda
     Properties:
-      Action: 'lambda:InvokeFunction'
+      Action: "lambda:InvokeFunction"
       FunctionName: !GetAtt ICPermissionSetAutomationLambda.Arn
       Principal: events.amazonaws.com
   LambdaResourcePermissionForAutoassignEvent:
-    Type: 'AWS::Lambda::Permission'
+    Type: "AWS::Lambda::Permission"
     DependsOn: ICAlertSNSNotificationLambda
     Properties:
-      Action: 'lambda:InvokeFunction'
+      Action: "lambda:InvokeFunction"
       FunctionName: !GetAtt ICAssignmentAutomationLambda.Arn
       Principal: events.amazonaws.com
   LambdaResourcePermissionForSNSEvent:
-    Type: 'AWS::Lambda::Permission'
+    Type: "AWS::Lambda::Permission"
     DependsOn: LambdaResourcePermissionForAutoassignEvent
     Properties:
-      Action: 'lambda:InvokeFunction'
+      Action: "lambda:InvokeFunction"
       FunctionName: !GetAtt ICAlertSNSNotificationLambda.Arn
       Principal: events.amazonaws.com
 
-##############################################################################
-# SNS topic that used by permissionset lambda(1) to invoke auto assign lambda #
-##############################################################################
+  ##############################################################################
+  # SNS topic that used by permissionset lambda(1) to invoke auto assign lambda #
+  ##############################################################################
   SNSInvokeLambdaTopic:
     Type: AWS::SNS::Topic
     Properties:
       DisplayName: ic-automation-topic
       TopicName: ic-automation-topic
-  SNSInvokeLambdaTopicPolicy: 
+  SNSInvokeLambdaTopicPolicy:
     Type: AWS::SNS::TopicPolicy
     Properties:
       Topics:
@@ -488,16 +567,16 @@ Resources:
             Effect: Allow
             Resource: !Ref SNSInvokeLambdaTopic
             Principal:
-              AWS: 
-               - !GetAtt ICPermissionSetAutomationLambdaRole.Arn
-  rOrgGetAccountsLambdaSubscription: 
+              AWS:
+                - !GetAtt ICPermissionSetAutomationLambdaRole.Arn
+  rOrgGetAccountsLambdaSubscription:
     Type: AWS::SNS::Subscription
     Properties:
       Endpoint: !GetAtt ICAssignmentAutomationLambda.Arn
       Protocol: lambda
       TopicArn: !Ref SNSInvokeLambdaTopic
 
-  rOrgGetAccountsLambdaPermission: 
+  rOrgGetAccountsLambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction

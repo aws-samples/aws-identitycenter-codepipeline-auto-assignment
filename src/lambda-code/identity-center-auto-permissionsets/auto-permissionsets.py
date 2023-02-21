@@ -1,37 +1,83 @@
 """Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved"""
-#pylint: disable=C0301
-#pylint: disable=W1202,W0703
-#pylint: disable=E0401
+# pylint: disable=C0301
+# pylint: disable=W1202,W0703
+# pylint: disable=E0401
 
 ####################################################################
 # A workaround of upgrade the boto3 version in the lambda function #
 ####################################################################
-# import sys
-# from pip._internal import main
-# main(['install', '-I', '-q', 'boto3', '--target', '/tmp/', '--no-cache-dir', '--disable-pip-version-check'])
-# sys.path.insert(0,'/tmp/')
-
-import os
-import json
-import logging
+import cfnresponse
 from time import sleep
+import json
+import os
+import logging
+import sys
+from pip._internal import main
+main(['install', '-I', '-q', 'boto3', '--target', '/tmp/',
+     '--no-cache-dir', '--disable-pip-version-check'])
+sys.path.insert(0, '/tmp/')
 import boto3
 from botocore.exceptions import ClientError
-import cfnresponse
 
-runtime_region = os.environ['Lambda_Region']
-ic_bucket_name = os.environ.get('IC_S3_BucketName')
-pipeline = boto3.client('codepipeline',region_name=runtime_region)
-s3 = boto3.resource('s3')
-sns_client = boto3.client('sns',region_name=runtime_region)
-sns_topic_name=os.environ.get('SNS_Topic_Name')
-ic_admin = boto3.client('sso-admin',region_name=runtime_region)
-ic_instance_arn = os.environ.get('IC_InstanceArn')
-default_session_duration = os.environ.get('Session_Duration')
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+logger.info("Logging initialized")
+
+
+runtime_region = os.environ['Lambda_Region']
+ic_bucket_name = os.environ.get('IC_S3_BucketName')
+pipeline = boto3.client('codepipeline', region_name=runtime_region)
+s3 = boto3.resource('s3')
+sns_client = boto3.client('sns', region_name=runtime_region)
+sns_topic_name = os.environ.get('SNS_Topic_Name')
+ic_admin = boto3.client('sso-admin', region_name=runtime_region)
+ic_instance_arn = os.environ.get('IC_InstanceArn')
+default_session_duration = os.environ.get('Session_Duration')
+management_account_id = os.environ.get('Org_Management_Account')
+delegated = os.environ.get('AdminDelegated')
+dynamodb = boto3.client('dynamodb', region_name=runtime_region)
+
+def sync_table_for_skipped_perm_sets(skipped_perm_set):
+    """Sync DynamoDB table with the list of skipped permission sets if Admin is delegated"""
+    try:
+        response = dynamodb.scan(
+            TableName='ic-SkippedPermissionSetsTable')
+        items = response['Items']
+        print(f"Items in DynamoDB table: {items}")
+        for item in items:
+            # If the permission set is not in the current skipped_perm_set, delete it from the table
+            if item['perm_set_arn']['S'] not in skipped_perm_set:
+                dynamodb.delete_item(
+                    TableName='ic-SkippedPermissionSetsTable',
+                    Key={'perm_set_arn': item['perm_set_arn']}
+                )
+                print(f"Drift detected in DynamoDB table. Deleted item: {item} from table.")
+
+            sleep(0.1)
+
+        # Update the table with all permission sets in the skipped_perm_set
+        batch = dynamodb.batch_write_item(RequestItems={
+            'ic-SkippedPermissionSetsTable': [
+                {
+                    'PutRequest': {
+                        'Item': {
+                            'perm_set_arn': {'S': perm_set_arn},
+                            'perm_set_name': {'S': perm_set_name}
+                        }
+                    }
+                } for perm_set_arn, perm_set_name in skipped_perm_set.items()
+            ]
+        })
+        #Get all skipped permission sets that were unprocessed
+        unprocessed_items = batch.get('UnprocessedItems')
+        if unprocessed_items:
+            logger.error("There were unprocessed skipped permission sets while writing to DynamoDB table: %s" % unprocessed_items)
+        else:
+            logger.info("All skipped permission sets written successfully to the table")
+    except Exception as error:
+        logger.error("Error syncing with DynamoDB table: %s", error)
 
 def get_all_permission_sets(pipeline_id):
     """List all the permission sets for the IAM Identity Center ARN"""
@@ -49,16 +95,42 @@ def get_all_permission_sets(pipeline_id):
                 MaxResults=100
             )
             all_perm_sets_arns += response['PermissionSets']
-
+        skipped_perm_set = {}
         for perm_set_arn in all_perm_sets_arns:
             describe_perm_set = ic_admin.describe_permission_set(
                 InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn
             )
             sleep(0.1)  # Aviod hitting API limit.
-            description = describe_perm_set['PermissionSet']['Description']
+            description = ''
+            try:
+                description = describe_perm_set['PermissionSet']['Description']
+            except Exception as error:
+                logger.error(
+                    "Failed to get description for permission set %s. Error: %s", perm_set_arn, error)
             perm_set_name = describe_perm_set['PermissionSet']['Name']
             perm_set_arn = describe_perm_set['PermissionSet']['PermissionSetArn']
+            list_tags = ic_admin.list_tags_for_resource(
+                InstanceArn=ic_instance_arn,
+                ResourceArn=perm_set_arn
+            )
+            sleep(0.1)
+            tags = list_tags['Tags']
+            while 'NextToken' in list_tags:
+                list_tags = ic_admin.list_tags_for_resource(
+                    InstanceArn=ic_instance_arn,
+                    ResourceArn=perm_set_arn,
+                    NextToken=list_tags['NextToken']
+                )
+                tags += list_tags['Tags']
+            control_tower_managed = False
+            for tag in tags:
+                if tag['Key'] == 'managedBy' and tag['Value'] == 'ControlTower':
+                    control_tower_managed = True
+                    break
+            if control_tower_managed == True:
+                skipped_perm_set.update({perm_set_arn: perm_set_name})
+                continue # Ignore permission set if managed by Control Tower. Requires users to tag Control Tower managed permission sets before running the pipeline
             permission_set_name_and_arn[perm_set_name] = {
                 'Arn': perm_set_arn,
                 'Description': description
@@ -76,19 +148,101 @@ def get_all_permission_sets(pipeline_id):
             jobId=pipeline_id,
             failureDetails={'message':str(error), 'type': 'JobFailed'}
         )
+    print(f"Skipped Permission Set Name and ARN: {skipped_perm_set}")
+    try:
+        sync_table_for_skipped_perm_sets(skipped_perm_set)
+    except Exception as error:
+        logger.error(
+            "Failed to invoke sync_table_for_skipped_perm_sets %s", error)
+    return permission_set_name_and_arn
+
+def get_all_permission_sets_if_delegate(pipeline_id):
+    """List all the permission sets for the IAM Identity Center ARN"""
+    try:
+        permission_set_name_and_arn = {}
+        response = ic_admin.list_permission_sets(
+            InstanceArn=ic_instance_arn,
+            MaxResults=100
+        )
+        all_perm_sets_arns = response['PermissionSets']
+        while 'NextToken' in response:
+            response = ic_admin.list_permission_sets(
+                InstanceArn=ic_instance_arn,
+                NextToken=response['NextToken'],
+                MaxResults=100
+            )
+            all_perm_sets_arns += response['PermissionSets']
+
+        skipped_perm_set = {}
+        for perm_set_arn in all_perm_sets_arns:
+            describe_perm_set = ic_admin.describe_permission_set(
+                InstanceArn=ic_instance_arn,
+                PermissionSetArn=perm_set_arn
+            )
+            sleep(0.1)  # Aviod hitting API limit.
+            description = ''
+            try:
+                description = describe_perm_set['PermissionSet']['Description']
+            except Exception as error:
+                logger.error("Failed to get description for permission set %s. Error: %s", perm_set_arn, error)
+            perm_set_name = describe_perm_set['PermissionSet']['Name']
+            perm_set_arn = describe_perm_set['PermissionSet']['PermissionSetArn']
+            list_accounts_for_provisioned_perm_set = ic_admin.list_accounts_for_provisioned_permission_set(
+                InstanceArn=ic_instance_arn,
+                PermissionSetArn=perm_set_arn,
+                MaxResults=100,
+            )
+            accounts_for_perm_set = list_accounts_for_provisioned_perm_set['AccountIds']
+            sleep(0.1)  # Aviod hitting API limit.
+            while 'NextToken' in list_accounts_for_provisioned_perm_set:
+                list_accounts_for_provisioned_perm_set = ic_admin.list_accounts_for_provisioned_permission_set(
+                    PermissionSetArn=perm_set_arn,
+                    MaxResults=100,
+                    NextToken=list_accounts_for_provisioned_perm_set['NextToken']
+                )
+                sleep(0.1)  # Aviod hitting API limit.
+                accounts_for_perm_set += list_accounts_for_provisioned_perm_set['AccountIds']
+            logger.info("Accounts for permission set %s is %s", perm_set_arn, accounts_for_perm_set)
+            if management_account_id in accounts_for_perm_set:
+                skipped_perm_set.update({perm_set_arn: perm_set_name})
+                continue
+            permission_set_name_and_arn[perm_set_name] = {
+                'Arn': perm_set_arn,
+                'Description': description
+                }
+    except ic_admin.exceptions.ThrottlingException as error:
+        logger.warning("Hit IAM Identity Center API limits. Sleep 5s...%s", error)
+        sleep(5)
+    except ic_admin.exceptions.ConflictException as error:
+        logger.info("The same IAM Identity Center process has been started \
+                    in another invocation, skipping...%s", error)
+        sleep(2)
+    except ClientError as error:
+        logger.error("%s", error)
+        pipeline.put_job_failure_result(
+            jobId=pipeline_id,
+            failureDetails={'message':str(error), 'type': 'JobFailed'}
+        )
+    print(f"Skipped Permission Set Name and ARN: {skipped_perm_set}")
+    try:
+        sync_table_for_skipped_perm_sets(skipped_perm_set)
+    except Exception as error:
+        logger.error("Failed to invoke sync_table_for_skipped_perm_sets %s", error)
     return permission_set_name_and_arn
 
 
 def get_all_json_files(bucket_name, pipeline_id):
     """Download all the JSON files from IAM Identity Center S3 bucket"""
+    logger.info("Getting all json files from S3 bucket")
     file_contents = {}
     my_bucket = s3.Bucket(bucket_name)
     try:
         for s3_object in my_bucket.objects.filter(Prefix="permission-sets/"):
             if ".json" in s3_object.key:
-                file_name=s3_object.key
+                file_name = s3_object.key
                 logger.info("processing file: %s", file_name)
-                s3.Bucket(bucket_name).download_file(file_name, "/tmp/each_permission_set.json")
+                s3.Bucket(bucket_name).download_file(
+                    file_name, "/tmp/each_permission_set.json")
                 temp_file = open("/tmp/each_permission_set.json")
                 data = json.load(temp_file)
                 file_contents[file_name] = data
@@ -99,7 +253,7 @@ def get_all_json_files(bucket_name, pipeline_id):
                      content from s3 file %s ", error)
         pipeline.put_job_failure_result(
             jobId=pipeline_id,
-            failureDetails={'message':str(error), 'type': 'JobFailed'}
+            failureDetails={'message': str(error), 'type': 'JobFailed'}
         )
     return file_contents
 
@@ -116,7 +270,8 @@ def create_permission_set(name, desc, tags, session_duration, pipeline_id):
         )
         sleep(0.1)  # Aviod hitting API limit.
     except ic_admin.exceptions.ThrottlingException as error:
-        logger.warning("%sHit CreatePermissionSet API limits. Sleep 5s.", error)
+        logger.warning(
+            "%sHit CreatePermissionSet API limits. Sleep 5s.", error)
         sleep(5)
     except ic_admin.exceptions.ConflictException as error:
         logger.info("%sThe same IAM Identity Center process has been \
@@ -126,7 +281,7 @@ def create_permission_set(name, desc, tags, session_duration, pipeline_id):
         logger.error("%s", error)
         pipeline.put_job_failure_result(
             jobId=pipeline_id,
-            failureDetails={'message':str(error), 'type': 'JobFailed'}
+            failureDetails={'message': str(error), 'type': 'JobFailed'}
         )
     return response
 
@@ -140,7 +295,8 @@ def add_managed_policy_to_perm_set(perm_set_arn, managed_policy_arn,
             PermissionSetArn=perm_set_arn,
             ManagedPolicyArn=managed_policy_arn
         )
-        logger.info('Managed Policy %s added to %s', managed_policy_arn, perm_set_arn)
+        logger.info('Managed Policy %s added to %s',
+                    managed_policy_arn, perm_set_arn)
         sleep(0.1)  # Aviod hitting API limit.
 
     except ic_admin.exceptions.ThrottlingException as error:
@@ -153,7 +309,7 @@ def add_managed_policy_to_perm_set(perm_set_arn, managed_policy_arn,
         logger.error("%s", error)
         pipeline.put_job_failure_result(
             jobId=pipeline_id,
-            failureDetails={'message':str(error), 'type': 'JobFailed'}
+            failureDetails={'message': str(error), 'type': 'JobFailed'}
         )
     return attach_managed_policy
 
@@ -168,23 +324,24 @@ def remove_managed_policy_from_perm_set(perm_set_arn, managed_policy_arn, pipeli
         )
         logger.info('Managed Policy %s removed \
                     from %s', managed_policy_arn, perm_set_arn)
-        sleep(0.1)  #Avoid hitting API limit.
+        sleep(0.1)  # Avoid hitting API limit.
     except ic_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit API limits. Sleep 2s...", error)
         sleep(2)
     except ic_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same IAM Identity Center process has been started in another invocation, skipping...", error)
+        logger.info(
+            "%s.The same IAM Identity Center process has been started in another invocation, skipping...", error)
     except ClientError as error:
         logger.error("%s", error)
         pipeline.put_job_failure_result(
             jobId=pipeline_id,
-            failureDetails={'message':str(error), 'type': 'JobFailed'}
+            failureDetails={'message': str(error), 'type': 'JobFailed'}
         )
     return remove_managed_policy
 
 
-def add_cx_managed_policy_to_perm_set (perm_set_arn, policy_name,
-                                       policy_path, pipeline_id):
+def add_cx_managed_policy_to_perm_set(perm_set_arn, policy_name,
+                                      policy_path, pipeline_id):
     """Attach a customer managed policy to a permission set"""
     try:
         attach_cx_managed_policy = ic_admin.attach_customer_managed_policy_reference_to_permission_set(
@@ -209,7 +366,7 @@ def add_cx_managed_policy_to_perm_set (perm_set_arn, policy_name,
         logger.error("%s", error)
         pipeline.put_job_failure_result(
             jobId=pipeline_id,
-            failureDetails={'message':str(error), 'type': 'JobFailed'}
+            failureDetails={'message': str(error), 'type': 'JobFailed'}
         )
     return attach_cx_managed_policy
 
@@ -228,17 +385,18 @@ def remove_cx_managed_policy_from_perm_set(perm_set_arn, policy_name, policy_pat
         )
         logger.info('Managed Policy %s removed \
                     from %s', policy_name, perm_set_arn)
-        sleep(0.1)  #Avoid hitting API limit.
+        sleep(0.1)  # Avoid hitting API limit.
     except ic_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit API limits. Sleep 2s...", error)
         sleep(2)
     except ic_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same IAM Identity Center process has been started in another invocation, skipping...", error)
+        logger.info(
+            "%s.The same IAM Identity Center process has been started in another invocation, skipping...", error)
     except ClientError as error:
         logger.error("%s", error)
         pipeline.put_job_failure_result(
             jobId=pipeline_id,
-            failureDetails={'message':str(error), 'type': 'JobFailed'}
+            failureDetails={'message': str(error), 'type': 'JobFailed'}
         )
     return remove_cx_managed_policy
 
@@ -264,11 +422,13 @@ def sync_managed_policies(local_managed_policies, perm_set_arn, pipeline_id):
         # Populate arrays for Managed Policy tracking.
         for aws_managed_policy in list_managed_policies['AttachedManagedPolicies']:
             aws_managed_attached_names.append(aws_managed_policy['Name'])
-            aws_managed_attached_dict[aws_managed_policy['Name']] = aws_managed_policy['Arn']
+            aws_managed_attached_dict[aws_managed_policy['Name']
+                                      ] = aws_managed_policy['Arn']
 
         for local_managed_policy in local_managed_policies:
             local_policy_names.append(local_managed_policy['Name'])
-            local_policy_dict[local_managed_policy['Name']] = local_managed_policy['Arn']
+            local_policy_dict[local_managed_policy['Name']
+                              ] = local_managed_policy['Arn']
 
         for policy_name in local_policy_names:
             if not policy_name in aws_managed_attached_names:
@@ -281,7 +441,8 @@ def sync_managed_policies(local_managed_policies, perm_set_arn, pipeline_id):
                                                     aws_managed_attached_dict[aws_policy],
                                                     pipeline_id)
     except ic_admin.exceptions.ThrottlingException as error:
-        logger.warning("%s.Hit IAM Identity Center API limits. Sleep 5s.", error)
+        logger.warning(
+            "%s.Hit IAM Identity Center API limits. Sleep 5s.", error)
         sleep(5)
     except ic_admin.exceptions.ConflictException as error:
         logger.info("%s.The same IAM Identity Center process has been started \
@@ -291,7 +452,7 @@ def sync_managed_policies(local_managed_policies, perm_set_arn, pipeline_id):
         logger.error("%s", error)
         pipeline.put_job_failure_result(
             jobId=pipeline_id,
-            failureDetails={'message':str(error), 'type': 'JobFailed'}
+            failureDetails={'message': str(error), 'type': 'JobFailed'}
         )
 
 
@@ -299,7 +460,7 @@ def sync_customer_policies(local_customer_policies, perm_set_arn, pipeline_id):
     """
     Synchronize customer managed polcies as defined in the JSON file with AWS
     Declare arrays for keeping track on custom policies locally and on AWS
-    """    
+    """
     customer_managed_attached_names = []
     customer_managed_attached_dict = {}
     local_policy_names = []
@@ -316,11 +477,13 @@ def sync_customer_policies(local_customer_policies, perm_set_arn, pipeline_id):
         # Populate arrays for Customer Managed Policy tracking.
         for cx_managed_policy in list_cx_managed_policies['CustomerManagedPolicyReferences']:
             customer_managed_attached_names.append(cx_managed_policy['Name'])
-            customer_managed_attached_dict[cx_managed_policy['Name']] = cx_managed_policy['Path']
+            customer_managed_attached_dict[cx_managed_policy['Name']
+                                           ] = cx_managed_policy['Path']
 
         for local_managed_policy in local_customer_policies:
             local_policy_names.append(local_managed_policy['Name'])
-            local_policy_dict[local_managed_policy['Name']] = local_managed_policy['Path']
+            local_policy_dict[local_managed_policy['Name']
+                              ] = local_managed_policy['Path']
 
         # Iterate local policy dictionary(key and value):
         for policy_name, policy_path in local_policy_dict.items():
@@ -330,10 +493,11 @@ def sync_customer_policies(local_customer_policies, perm_set_arn, pipeline_id):
 
         for ex_policy_name, ex_policy_path in customer_managed_attached_dict.items():
             if not ex_policy_name in local_policy_names:
-                remove_cx_managed_policy_from_perm_set(perm_set_arn,ex_policy_name,
+                remove_cx_managed_policy_from_perm_set(perm_set_arn, ex_policy_name,
                                                        ex_policy_path, pipeline_id)
     except ic_admin.exceptions.ThrottlingException as error:
-        logger.warning("%s.Hit IAM Identity Center API limits. Sleep 5s.", error)
+        logger.warning(
+            "%s.Hit IAM Identity Center API limits. Sleep 5s.", error)
         sleep(5)
     except ic_admin.exceptions.ConflictException as error:
         logger.info("%s.The same IAM Identity Center process has been started \
@@ -343,7 +507,7 @@ def sync_customer_policies(local_customer_policies, perm_set_arn, pipeline_id):
         logger.error("%s", error)
         pipeline.put_job_failure_result(
             jobId=pipeline_id,
-            failureDetails={'message':str(error), 'type': 'JobFailed'}
+            failureDetails={'message': str(error), 'type': 'JobFailed'}
         )
 
 
@@ -363,7 +527,8 @@ def remove_inline_policies(perm_set_arn, pipeline_id):
             logger.info('Removed inline policiy for %s', perm_set_arn)
             sleep(0.1)  # Aviod hitting API limit.
     except ic_admin.exceptions.ThrottlingException as error:
-        logger.warning("%s.Hit IAM Identity Center API limit. Sleep 5s..", error)
+        logger.warning(
+            "%s.Hit IAM Identity Center API limit. Sleep 5s..", error)
         sleep(5)
     except ic_admin.exceptions.ConflictException as error:
         logger.info("%s.The same IAM Identity Center process has been started \
@@ -373,7 +538,7 @@ def remove_inline_policies(perm_set_arn, pipeline_id):
         logger.error("%s", error)
         pipeline.put_job_failure_result(
             jobId=pipeline_id,
-            failureDetails={'message':str(error), 'type': 'JobFailed'}
+            failureDetails={'message': str(error), 'type': 'JobFailed'}
         )
 
 
@@ -389,7 +554,8 @@ def sync_inline_policies(local_inline_policy, perm_set_arn, pipeline_id):
             )
             sleep(0.1)  # Aviod hitting API limit.
         except ic_admin.exceptions.ThrottlingException as error:
-            logger.warning("%s.Hit IAM Identity Center API limit. Sleep 5s...", error)
+            logger.warning(
+                "%s.Hit IAM Identity Center API limit. Sleep 5s...", error)
             sleep(5)
         except ic_admin.exceptions.ConflictException as error:
             logger.info("%s.The same IAM Identity Center process has been started \
@@ -398,7 +564,7 @@ def sync_inline_policies(local_inline_policy, perm_set_arn, pipeline_id):
             logger.warning("%s", error)
             pipeline.put_job_failure_result(
                 jobId=pipeline_id,
-                failureDetails={'message':str(error), 'type': 'JobFailed'}
+                failureDetails={'message': str(error), 'type': 'JobFailed'}
             )
     else:
         remove_inline_policies(perm_set_arn, pipeline_id)
@@ -414,7 +580,8 @@ def delete_permission_set(perm_set_arn, perm_set_name, pipeline_id):
         logger.info('%s Permission set deleted', perm_set_name)
         sleep(0.1)  # Aviod hitting API limit.
     except ic_admin.exceptions.ThrottlingException as error:
-        logger.warning("%s.Hit delete_permission_set API limits. Sleep 5s..", error)
+        logger.warning(
+            "%s.Hit delete_permission_set API limits. Sleep 5s..", error)
         sleep(5)
     except ic_admin.exceptions.ConflictException as error:
         logger.info("%s.The same IAM Identity Center process has been started \
@@ -423,7 +590,7 @@ def delete_permission_set(perm_set_arn, perm_set_name, pipeline_id):
         logger.error("%s", error)
         pipeline.put_job_failure_result(
             jobId=pipeline_id,
-            failureDetails={'message':str(error), 'type': 'JobFailed'}
+            failureDetails={'message': str(error), 'type': 'JobFailed'}
         )
 
 
@@ -577,7 +744,8 @@ def deprovision_permission_set_from_accounts(perm_set_arn,
                     # Allow time for the deprovision - this should be refactored to be event driven
                     sleep(1)
         else:
-            logger.info('%s is not provisioned to any accounts - deleting...', perm_set_name)
+            logger.info(
+                '%s is not provisioned to any accounts - deleting...', perm_set_name)
     except ic_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit API limits. Sleep 5s...", error)
         sleep(5)
@@ -589,7 +757,7 @@ def deprovision_permission_set_from_accounts(perm_set_arn,
         logger.error("%s", error)
         pipeline.put_job_failure_result(
             jobId=pipeline_id,
-            failureDetails={'message':str(error), 'type': 'JobFailed'}
+            failureDetails={'message': str(error), 'type': 'JobFailed'}
         )
 
 
@@ -621,7 +789,7 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn, pipeline_id):
             logger.error("%s", error)
             pipeline.put_job_failure_result(
                 jobId=pipeline_id,
-                failureDetails={'message':str(error), 'type': 'JobFailed'}
+                failureDetails={'message': str(error), 'type': 'JobFailed'}
             )
 
     # If any accounts were found to be out of date - reprovision the permission set to all accounts.
@@ -668,9 +836,8 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn, pipeline_id):
             logger.error("%s", error)
             pipeline.put_job_failure_result(
                 jobId=pipeline_id,
-                failureDetails={'message':str(error), 'type': 'JobFailed'}
+                failureDetails={'message': str(error), 'type': 'JobFailed'}
             )
-
 
 def sync_json_with_aws(local_files, aws_permission_sets, pipeline_id):
     """Synchronize the repository's json files with the AWS Permission Sets"""
@@ -696,37 +863,49 @@ def sync_json_with_aws(local_files, aws_permission_sets, pipeline_id):
 
             # If Permission Set does not exist in AWS - add it.
             if local_name in aws_permission_sets:
-                logger.info('%s exists in IAM Identity Center - checking policy and configuration', local_name)
+                logger.info(
+                    '%s exists in IAM Identity Center - checking policy and configuration', local_name)
             else:
-                logger.info('ADD OPERATION: %s does not exist in IAM Identity Center - adding...', local_name)
-                created_perm_set = create_permission_set(local_name, local_desc, local_tags, local_session_duration, pipeline_id)
+                logger.info(
+                    'ADD OPERATION: %s does not exist in IAM Identity Center - adding...', local_name)
+                created_perm_set = create_permission_set(
+                    local_name, local_desc, local_tags, local_session_duration, pipeline_id)
                 created_perm_set_name = created_perm_set['PermissionSet']['Name']
                 created_perm_set_arn = created_perm_set['PermissionSet']['PermissionSetArn']
                 created_perm_set_desc = created_perm_set['PermissionSet']['Description']
                 aws_permission_sets[created_perm_set_name] = {
                     'Arn': created_perm_set_arn,
                     'Description': created_perm_set_desc
-                    }
+                }
 
             # Synchronize managed and inline policies for all local permission sets with AWS.
-            sync_managed_policies(local_managed_policies, aws_permission_sets[local_name]['Arn'], pipeline_id)
-            sync_customer_policies(local_customer_policies,aws_permission_sets[local_name]['Arn'], pipeline_id)
-            sync_inline_policies(local_inline_policy, aws_permission_sets[local_name]['Arn'], pipeline_id)
-            sync_description(aws_permission_sets[local_name]['Arn'], local_desc, aws_permission_sets[local_name]['Description'],local_session_duration)
-            sync_tags(local_name, local_tags, aws_permission_sets[local_name]['Arn'])
-            reprovision_permission_sets(local_name, aws_permission_sets[local_name]['Arn'], pipeline_id)
+            sync_managed_policies(
+                local_managed_policies, aws_permission_sets[local_name]['Arn'], pipeline_id)
+            sync_customer_policies(
+                local_customer_policies, aws_permission_sets[local_name]['Arn'], pipeline_id)
+            sync_inline_policies(
+                local_inline_policy, aws_permission_sets[local_name]['Arn'], pipeline_id)
+            sync_description(aws_permission_sets[local_name]['Arn'], local_desc,
+                             aws_permission_sets[local_name]['Description'], local_session_duration)
+            sync_tags(local_name, local_tags,
+                      aws_permission_sets[local_name]['Arn'])
+            reprovision_permission_sets(
+                    local_name, aws_permission_sets[local_name]['Arn'], pipeline_id)
 
         # If a permission set exists in AWS but not on the local - delete it
         for aws_perm_set in aws_permission_sets:
             if not aws_perm_set in local_permission_set_names:
-                logger.info('DELETE OPERATION: %s does not exist locally - deleting...', aws_perm_set)
-                deprovision_permission_set_from_accounts(aws_permission_sets[aws_perm_set]['Arn'], aws_perm_set, pipeline_id)
-                delete_permission_set(aws_permission_sets[aws_perm_set]['Arn'], aws_perm_set, pipeline_id)
+                logger.info(
+                    'DELETE OPERATION: %s does not exist locally - deleting...', aws_perm_set)
+                deprovision_permission_set_from_accounts(
+                        aws_permission_sets[aws_perm_set]['Arn'], aws_perm_set, pipeline_id)
+                delete_permission_set(
+                    aws_permission_sets[aws_perm_set]['Arn'], aws_perm_set, pipeline_id)
     except Exception as error:
         logger.error("Sync AWS permission sets failed due to %s", error)
         pipeline.put_job_failure_result(
             jobId=pipeline_id,
-            failureDetails={'message':str(error), 'type': 'JobFailed'}
+            failureDetails={'message': str(error), 'type': 'JobFailed'}
         )
         quit()
     return "Synchronized AWS Permission Sets with new updated defination."
@@ -734,19 +913,23 @@ def sync_json_with_aws(local_files, aws_permission_sets, pipeline_id):
 
 def invoke_auto_assignment(topic_name, accountid, pipeline_id):
     """Use SNS topic to invoke auto assignment Lambda function"""
-    if pipeline_id:
-        try:
-            topic_arn = 'arn:aws:sns:'+runtime_region+':'+str(accountid)+':'+topic_name
-            response = sns_client.publish(
-                TopicArn=topic_arn,
-                Message=pipeline_id
-            )
-            logger.info("%s", response)
-        except Exception as error:
+
+    try:
+        topic_arn = 'arn:aws:sns:'+runtime_region + \
+            ':'+str(accountid)+':'+topic_name
+        response = sns_client.publish(
+            TopicArn=topic_arn,
+            Message=pipeline_id
+        )
+        logger.info("%s", response)
+    except Exception as error:
+        if pipeline_id == 'AWS API Call via CloudTrail':
+            logger.error("Error invoking auto-assignment: %s", error)
+        elif pipeline_id != '':
             logger.error("%s", error)
             pipeline.put_job_failure_result(
                 jobId=pipeline_id,
-                failureDetails={'message':str(error), 'type': 'JobFailed'}
+                failureDetails={'message': str(error), 'type': 'JobFailed'}
             )
 
 
@@ -754,28 +937,70 @@ def lambda_handler(event, context):
     """Lambda_handler"""
     logger.info(event)
     logger.debug(context)
+    logger.info('Boto3 version: %s', boto3.__version__)
+
+    pipeline_id = ""
 
     if 'RequestType' in event and event['RequestType'] == 'Delete':
         cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
 
-    elif 'CodePipeline.job' in event or event['detail-type'] =='AWS API Call via CloudTrail':
+    elif 'CodePipeline.job' in event:
         try:
             pipeline_id = event['CodePipeline.job']['id']
-            logger.info("The automation process is now started. %s", str(pipeline_id))
-            aws_permission_sets = get_all_permission_sets(pipeline_id)
-            logger.info("The existing aws_permission_sets are : %s", aws_permission_sets)
-            #Get the permission set's baseline by loading S3 bucket files
+            logger.info("The automation process is now started. %s",
+                        str(pipeline_id))
+            if delegated == "true":
+                aws_permission_sets = get_all_permission_sets_if_delegate(pipeline_id)
+                logger.info("The existing aws_permission_sets are : %s",
+                        aws_permission_sets)
+            else:
+                aws_permission_sets = get_all_permission_sets(pipeline_id)
+                logger.info("The existing aws_permission_sets are : %s",
+                        aws_permission_sets)
+            # Get the permission set's baseline by loading S3 bucket files
             json_files = get_all_json_files(ic_bucket_name, pipeline_id)
             sync_json_with_aws(json_files, aws_permission_sets, pipeline_id)
-            ##Invoke Next automation lambda function
+            # Invoke Next automation lambda function
             logger.info("Published sns topic to invoke auto assignment function. \
                         Check the auto assignment lambda funcion log for further execution details.")
-            accountid=context.invoked_function_arn.split(':')[4]
+            accountid = context.invoked_function_arn.split(':')[4]
             invoke_auto_assignment(sns_topic_name, accountid, pipeline_id)
 
         except Exception as error:
             logger.error("%s", error)
             pipeline.put_job_failure_result(
                 jobId=pipeline_id,
-                failureDetails={'message':str(error), 'type': 'JobFailed'}
+                failureDetails={'message': str(error), 'type': 'JobFailed'}
+            )
+
+    elif event['detail-type'] == 'AWS API Call via CloudTrail':
+        sleep(10)
+        event_detail_type = event['detail-type']
+        try:
+            print("The automation process is now started. This event is triggered by EventBrodge")
+            if delegated == "true":
+                aws_permission_sets = get_all_permission_sets_if_delegate(pipeline_id)
+                logger.info("The existing aws_permission_sets are : %s",
+                        aws_permission_sets)
+            else:
+                aws_permission_sets = get_all_permission_sets(pipeline_id)
+                logger.info("The existing aws_permission_sets are : %s",
+                        aws_permission_sets)
+            # Get the permission set's baseline by loading S3 bucket files
+            json_files = get_all_json_files(ic_bucket_name, pipeline_id)
+            sync_json_with_aws(json_files, aws_permission_sets, pipeline_id)
+            # Invoke Next automation lambda function
+            print("Published sns topic to invoke auto assignment function.")
+            logger.info("Published sns topic to invoke auto assignment function. \
+                        Check the auto assignment lambda funcion log for further execution details.")
+            accountid = context.invoked_function_arn.split(':')[4]
+            print(f"Account ID: {accountid}")
+            print(f"SNS Topic Name: {sns_topic_name}")
+            invoke_auto_assignment(sns_topic_name, accountid, event_detail_type)
+
+        except Exception as error:
+            logger.error("%s", error)
+            pipeline.put_job_failure_result(
+                jobId=pipeline_id,
+                failureDetails={'message': str(error), 'type': 'JobFailed'}
             )
