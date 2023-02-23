@@ -148,12 +148,15 @@ def get_all_permission_sets(pipeline_id):
             jobId=pipeline_id,
             failureDetails={'message':str(error), 'type': 'JobFailed'}
         )
-    print(f"Skipped Permission Set Name and ARN: {skipped_perm_set}")
-    try:
-        sync_table_for_skipped_perm_sets(skipped_perm_set)
-    except Exception as error:
-        logger.error(
-            "Failed to invoke sync_table_for_skipped_perm_sets %s", error)
+    if skipped_perm_set:
+        try:
+            print(f"Skipped Permission Set Name and ARN: {skipped_perm_set}")
+            sync_table_for_skipped_perm_sets(skipped_perm_set)
+        except Exception as error:
+            logger.error(
+                "Failed to invoke sync_table_for_skipped_perm_sets %s", error)
+    else:
+        print("No Permission Sets were skipped")
     return permission_set_name_and_arn
 
 def get_all_permission_sets_if_delegate(pipeline_id):
@@ -223,11 +226,15 @@ def get_all_permission_sets_if_delegate(pipeline_id):
             jobId=pipeline_id,
             failureDetails={'message':str(error), 'type': 'JobFailed'}
         )
-    print(f"Skipped Permission Set Name and ARN: {skipped_perm_set}")
-    try:
-        sync_table_for_skipped_perm_sets(skipped_perm_set)
-    except Exception as error:
-        logger.error("Failed to invoke sync_table_for_skipped_perm_sets %s", error)
+    if skipped_perm_set:
+        try:
+            print(f"Skipped Permission Set Name and ARN: {skipped_perm_set}")
+            sync_table_for_skipped_perm_sets(skipped_perm_set)
+        except Exception as error:
+            logger.error(
+                "Failed to invoke sync_table_for_skipped_perm_sets %s", error)
+    else:
+        print("No Permission Sets were skipped")
     return permission_set_name_and_arn
 
 
