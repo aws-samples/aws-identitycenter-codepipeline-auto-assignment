@@ -1,11 +1,16 @@
 {
     "Parameters": {
-        "IdentityStoreId": "",
+        "AdminDelegated": "false",
+        "ControlTowerEnabled": "false",
+        "OrgManagementAccount": "",
         "OrganizationId": "",
+        "IdentityStoreId": "",
+        "ICInstanceARN": "",
         "ICMappingBucketName": "",
         "SNSEmailEndpointSubscription": "",
+        "createICAdminRole": "true",
         "ICAutomationAdminArn": "",
-        "ICInstanceARN": "",
+        "createICKMSAdminRole": "true",
         "ICKMSAdminArn": ""
     }
 }
