@@ -984,7 +984,7 @@ def lambda_handler(event, context):
         sleep(10)
         event_detail_type = event['detail-type']
         try:
-            print("The automation process is now started. This event is triggered by EventBrodge")
+            print("The automation process is now started. This event is triggered by EventBridge")
             if delegated == "true":
                 aws_permission_sets = get_all_permission_sets_if_delegate(pipeline_id)
                 logger.info("The existing aws_permission_sets are : %s",
