@@ -11,6 +11,7 @@ AWS IAM Identity Center requires the [AWS Organizations service](https://console
     - The AWS CodePipeline will first deploy CloudFormation stacks to create a security S3 bucket, automation Lambda functions and other AWS resources.
     - Once the CloudFormation stack is completed, CodePipeline syncs all the mapping files to a Secure S3 bucket
     - Pipeline invokes the Lambda to create IAM Identity Center resources by referring the JSON files in the s3 bucket.
+    - Amazon EventBridge triggers email notifications via Amazon Simple Notification Service (SNS) on manual changes to Identity Center and invokes Amazon Lambda function to remove manual changes revert back to baseline configuration.
 - **This solution works with both Control Tower and non Control Tower based landing zones.**
 
 ## Solution Instruction
