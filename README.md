@@ -159,7 +159,7 @@ This also recommended as a best practice:
 
 ### Architecture Diagram
 
-  ![Image of Identity_Center_Solution_Diagram](diagram/Architecture_diagram.png)
+  ![Image of Identity_Center_Solution_Diagram](diagram/architecture_diagram.png) 
 
 ### This solution covers the following scenarios:
 - If any change had been made through another approach without updating JSON mapping files in the source, such as deleting a permission set, will this solution be able to detect and fix those drifts?
