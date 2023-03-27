@@ -80,6 +80,8 @@ Resources:
     Type: AWS::DynamoDB::Table
     Condition: CTorAdminDelegated
     Properties:
+      SSESpecification:
+        SSEEnabled: true
       AttributeDefinitions:
         - AttributeName: perm_set_arn
           AttributeType: S
@@ -145,10 +147,44 @@ Resources:
         - PolicyName: ICPermissionSetAutomationLambdaRolePolicy
           PolicyDocument:
             Statement:
+              - Sid: SSOPermission
+                Effect: Allow
+                Action:
+                  - "sso:AttachCustomerManagedPolicyReferenceToPermissionSet"
+                  - "sso:AttachManagedPolicyToPermissionSet"
+                  - "sso:CreatePermissionSet"
+                  - "sso:DeletePermissionSet"
+                  - "sso:DeletePermissionsBoundaryFromPermissionSet"
+                  - "sso:DeletePermissionsPolicy"
+                  - "sso:DescribePermissionSet"
+                  - "sso:DescribePermissionSetProvisioningStatus"
+                  - "sso:DescribePermissionsPolicies"
+                  - "sso:DescribeRegisteredRegions"
+                  - "sso:DetachCustomerManagedPolicyReferenceFromPermissionSet"
+                  - "sso:DetachManagedPolicyFromPermissionSet"
+                  - "sso:GetInlinePolicyForPermissionSet"
+                  - "sso:GetPermissionSet"
+                  - "sso:GetPermissionsBoundaryForPermissionSet"
+                  - "sso:GetPermissionsPolicy"
+                  - "sso:ListAccountsForProvisionedPermissionSet"
+                  - "sso:ListCustomerManagedPolicyReferencesInPermissionSet"
+                  - "sso:ListManagedPoliciesInPermissionSet"
+                  - "sso:ListPermissionSetProvisioningStatus"
+                  - "sso:ListPermissionSets"
+                  - "sso:ListPermissionSetsProvisionedToAccount"
+                  - "sso:ListTagsForResource"
+                  - "sso:ProvisionPermissionSet"
+                  - "sso:PutInlinePolicyToPermissionSet"
+                  - "sso:PutPermissionsBoundaryToPermissionSet"
+                  - "sso:PutPermissionsPolicy"
+                  - "sso:UpdateApplicationProfileForAWSAccountInstance"
+                  - "sso:TagResource"
+                  - "sso:UntagResource"
+                  - "sso:UpdatePermissionSet"
+                Resource: "*"
               - Sid: EssentialActions
                 Effect: Allow
                 Action:
-                  - "sso:*"
                   - "codepipeline:PutJobFailureResult"
                   - "codepipeline:PutJobSuccessResult"
                   - "logs:CreateLogDelivery"
