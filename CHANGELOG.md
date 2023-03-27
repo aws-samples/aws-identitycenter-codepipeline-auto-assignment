@@ -45,3 +45,7 @@
       - Updated code to handle existing Permission Sets without description.
       - Updated code to remove drift when triggered by EventBridge rule on detecting manual changes to Identity Center
 
+## 2.0.1
+   - Updated the IAM, KMS, and S3 permissions in the codepipeline-stack.template, identity-center-automation.template, and identity-center-s3-bucket.template to fix cfn_scan failures.
+   - Updated buildspec-param.yml to add CFN linting and secure checks using [cfn_nag_scan](https://github.com/stelligent/cfn_nag).
+      - The CodeBuild task will fail if cfn_nag_scan detects any failure in the CloudFormation templates.
