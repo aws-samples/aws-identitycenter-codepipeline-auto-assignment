@@ -49,6 +49,13 @@ Resources:
   ###################################################################################
   ICAdminRole:
     Type: "AWS::IAM::Role"
+    Metadata:
+        cfn_nag:
+          rules_to_suppress:
+            - id: F38
+              reason: "Grant this ICAdminRole IAM full/admin permissions."
+            - id: F3
+              reason: "Grant this ICAdminRole SSO full/admin permissions."
     Condition: CreateICAdminRoleEqualsTrue
     Properties:
       AssumeRolePolicyDocument:
@@ -82,8 +89,14 @@ Resources:
                   - "s3:ListBucket"
                 Resource: !Sub "arn:aws:s3:::${ICMappingBucketName}-${AWS::AccountId}-${AWS::Region}"
 
+
   ICKMSAdminRole:
     Type: "AWS::IAM::Role"
+    Metadata:
+        cfn_nag:
+          rules_to_suppress:
+            - id: F3
+              reason: "Grant this ICKMSAdminRole full/admin KMS permissions."
     Condition: CreateICKMSAdminRoleEqualsTrue
     Properties:
       AssumeRolePolicyDocument:
@@ -104,6 +117,7 @@ Resources:
                 Action:
                   - "kms:*"
                 Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*"
+
   S3Bucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Delete
@@ -124,12 +138,12 @@ Resources:
         RestrictPublicBuckets: True
 
   S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
     Metadata:
       cfn_nag:
         rules_to_suppress:
           - id: F16
             reason: "We can allow * for the Principal as we are limiting access to the Org via a Condition."
-    Type: AWS::S3::BucketPolicy
     Properties:
       Bucket: !Ref S3Bucket
       PolicyDocument:
@@ -215,6 +229,11 @@ Resources:
 
   S3BucketKMSKey:
     Type: "AWS::KMS::Key"
+    Metadata:
+        cfn_nag:
+          rules_to_suppress:
+            - id: F76
+              reason: "Secure Lambda Permissions with IAM Condition."
     Properties:
       Description: Identity Center(IC) mapping bucket Server-side encryption KMS Key
       EnableKeyRotation: true
@@ -247,7 +266,7 @@ Resources:
               - "kms:Delete*"
               - "kms:Describe*"
               - "kms:Disable*"
-              - "kms:Enable*"
+              - "kms:EnableKeyRotation"
               - "kms:GenerateDataKey"
               - "kms:Get*"
               - "kms:List*"

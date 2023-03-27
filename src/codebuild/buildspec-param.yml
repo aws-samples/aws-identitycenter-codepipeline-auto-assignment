@@ -2,17 +2,31 @@ version: 0.2
 env:
   git-credential-helper: yes
 phases:
+  pre_build:
+    commands:
+      - export DEBIAN_FRONTEND=noninteractive
+      - apt update
+      - apt-get install python3-pip -y -q
+      - apt-get install jq git ruby-rubygems   -y -q
+      - pip3 install cfn-lint --quiet              
+      - gem install cfn-nag
+      - which cfn_nag_scan
   build:
     commands:
+      - set -eux
       - echo "Create CloudFormation Parameter Files."
-      - pwd
-      - sudo apt install -y jq
       - jq "del(.Parameters.OrganizationId, .Parameters.ICKMSAdminArn, .Parameters.createICKMSAdminRole, .Parameters.createICAdminRole)" identity-center-stacks-parameters.json > ic-automation-parameters.json
       - jq "del(.Parameters.IdentityStoreId, .Parameters.SNSEmailEndpointSubscription, .Parameters.ICInstanceARN, .Parameters.OrgManagementAccount, .Parameters.AdminDelegated, .Parameters.ControlTowerEnabled)" identity-center-stacks-parameters.json > ic-s3-parameters.json
       - cat ic-automation-parameters.json
       - cat ic-s3-parameters.json
-      - echo "Process is completed"
+      - echo "Parameter Process is done."
+      # CFN Template Linting and Security Scans 
+      - echo "Start scanning CloudFormation templates using cfn-nag Tool......."
+      - cfn_nag_scan --input-path codepipeline-stack.template
+      - cfn_nag_scan --input-path delegate-admin/IC-Delegate-Admin.yml
+      - cfn_nag_scan --input-path identity-center-s3-bucket.template
+      - cfn_nag_scan --input-path identity-center-s3-bucket.template
 
 artifacts:
   files:
-    - '**/*'
+    - '**/*
