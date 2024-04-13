@@ -456,5 +456,4 @@ Resources:
                   - 'sns:GetTopicAttributes'
                   - 'sns:DeleteTopic'
                   - 'sns:Unsubscribe'
-                Resource: '*
-                
+                Resource: '*'
