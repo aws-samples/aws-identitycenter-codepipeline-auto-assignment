@@ -116,7 +116,7 @@ Resources:
             - !Sub ${AWS::Region}
         S3Key: !Ref PermissionSetsLambdaZipFileName
         S3ObjectVersion: !Ref PermissionSetsLambdaZipFileVersion
-      Runtime: "python3.9"
+      Runtime: "python3.12"
       Environment:
         Variables:
           IC_InstanceArn: !Ref ICInstanceARN
@@ -251,7 +251,7 @@ Resources:
             - !Sub ${AWS::Region}
         S3Key: !Ref AssignmentLambdaZipFileName
         S3ObjectVersion: !Ref AssignmentLambdaZipFileVersion
-      Runtime: "python3.9"
+      Runtime: "python3.12"
       Environment:
         Variables:
           IC_InstanceArn: !Ref ICInstanceARN
@@ -532,7 +532,7 @@ Resources:
               print(ex)
               print("Error.Execution completed incorrectly")
             return {'statusCode': 200,'body': json.dumps('successfully executed lambda')}
-      Runtime: "python3.9"
+      Runtime: "python3.12"
       Environment:
         Variables:
           SNSTopic_ARN: !Ref SNSICManualActionAlertTopic
