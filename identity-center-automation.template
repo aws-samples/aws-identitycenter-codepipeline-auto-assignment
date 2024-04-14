@@ -153,6 +153,7 @@ Resources:
                   - "sso:AttachCustomerManagedPolicyReferenceToPermissionSet"
                   - "sso:AttachManagedPolicyToPermissionSet"
                   - "sso:ListAccountAssignments"
+                  - "sso:DeleteAccountAssignment"
                   - "sso:CreatePermissionSet"
                   - "sso:DeletePermissionSet"
                   - "sso:DeletePermissionsBoundaryFromPermissionSet"
