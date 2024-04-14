@@ -199,6 +199,7 @@ def get_all_permission_sets_if_delegate(pipeline_id):
             sleep(0.1)  # Aviod hitting API limit.
             while 'NextToken' in list_accounts_for_provisioned_perm_set:
                 list_accounts_for_provisioned_perm_set = ic_admin.list_accounts_for_provisioned_permission_set(
+                    InstanceArn=ic_instance_arn,
                     PermissionSetArn=perm_set_arn,
                     MaxResults=100,
                     NextToken=list_accounts_for_provisioned_perm_set['NextToken']

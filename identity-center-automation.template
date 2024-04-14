@@ -28,12 +28,20 @@ Parameters:
       default value.
     Type: String
     Default: identity-center-auto-assign.zip
+  AssignmentLambdaZipFileVersion:
+    Description: >-
+      Lambda function code zip version to point Lambda to the latest version of the object.
+    Type: String
   PermissionSetsLambdaZipFileName:
     Description: >-
       Lambda function code that manages IAM Identity Center permission sets. You can use the
       default value.
     Type: String
     Default: identity-center-auto-permissionsets.zip
+  PermissionSetsLambdaZipFileVersion:
+    Description: >-
+      Lambda function code zip version to point Lambda to the latest version of the object.
+    Type: String
   SNSEmailEndpointSubscription:
     Description: The SNS subscription which used to receive SNS email notification.
     Type: String
@@ -107,6 +115,7 @@ Resources:
             - !Sub ${AWS::AccountId}
             - !Sub ${AWS::Region}
         S3Key: !Ref PermissionSetsLambdaZipFileName
+        S3ObjectVersion: !Ref PermissionSetsLambdaZipFileVersion
       Runtime: "python3.9"
       Environment:
         Variables:
@@ -152,8 +161,6 @@ Resources:
                 Action:
                   - "sso:AttachCustomerManagedPolicyReferenceToPermissionSet"
                   - "sso:AttachManagedPolicyToPermissionSet"
-                  - "sso:ListAccountAssignments"
-                  - "sso:DeleteAccountAssignment"
                   - "sso:CreatePermissionSet"
                   - "sso:DeletePermissionSet"
                   - "sso:DeletePermissionsBoundaryFromPermissionSet"
@@ -168,6 +175,8 @@ Resources:
                   - "sso:GetPermissionSet"
                   - "sso:GetPermissionsBoundaryForPermissionSet"
                   - "sso:GetPermissionsPolicy"
+                  - "sso:ListAccountAssignments"
+                  - "sso:DeleteAccountAssignment"
                   - "sso:ListAccountsForProvisionedPermissionSet"
                   - "sso:ListCustomerManagedPolicyReferencesInPermissionSet"
                   - "sso:ListManagedPoliciesInPermissionSet"
@@ -241,6 +250,7 @@ Resources:
             - !Sub ${AWS::AccountId}
             - !Sub ${AWS::Region}
         S3Key: !Ref AssignmentLambdaZipFileName
+        S3ObjectVersion: !Ref AssignmentLambdaZipFileVersion
       Runtime: "python3.9"
       Environment:
         Variables:
@@ -297,6 +307,7 @@ Resources:
                   - "iam:PutRolePolicy"
                   - "iam:UpdateSAMLProvider"
                   - "identitystore:ListGroups"
+                  - "identitystore:GetGroupId"
                   - "logs:CreateLogDelivery"
                   - "logs:CreateLogGroup"
                   - "logs:CreateLogStream"

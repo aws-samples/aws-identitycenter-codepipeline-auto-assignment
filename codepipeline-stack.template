@@ -190,6 +190,8 @@ Resources:
               Configuration:
                 ProjectName: !Ref CodeBuildProjectS3Upload
               RunOrder: 3
+              OutputArtifacts:
+                - Name: UpdatedSourceArtifactsWithObjectVersion
         - Name: BuildICTemplateAndSyncMappingFiles
           Actions:
             - Name: BuildICTemplate
@@ -199,13 +201,13 @@ Resources:
                 Version: '1'
                 Provider: CloudFormation
               InputArtifacts:
-                - Name: UpdatedSourceArtifacts
+                - Name: UpdatedSourceArtifactsWithObjectVersion
               Configuration:
                 ActionMode: CREATE_UPDATE
                 StackName: IdentityCenter-Automation-Stack
                 Capabilities: 'CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND'
-                TemplateConfiguration: UpdatedSourceArtifacts::ic-automation-parameters.json
-                TemplatePath: UpdatedSourceArtifacts::identity-center-automation.template
+                TemplateConfiguration: UpdatedSourceArtifactsWithObjectVersion::ic-automation-parameters.json
+                TemplatePath: UpdatedSourceArtifactsWithObjectVersion::identity-center-automation.template
                 RoleArn: !GetAtt CodeBuildRole.Arn
               RunOrder: 1
             - Name: SyncMappingFiles
