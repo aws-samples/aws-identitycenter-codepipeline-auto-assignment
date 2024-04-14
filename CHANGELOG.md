@@ -49,3 +49,11 @@
    - Updated the IAM, KMS, and S3 permissions in the codepipeline-stack.template, identity-center-automation.template, and identity-center-s3-bucket.template to fix cfn_scan failures.
    - Updated buildspec-param.yml to add CFN linting and secure checks using [cfn_nag_scan](https://github.com/stelligent/cfn_nag).
       - The CodeBuild task will fail if cfn_nag_scan detects any failure in the CloudFormation templates.
+
+## 2.1.0
+   - Replaced list_groups API with get_group_id API to remove the use of depricated filter method to obtain group Id by name in the auto-assignment.py.
+      - list_groups returns a paginated list of complete Group objects. Filtering for a Group by the DisplayName attribute is deprecated. Instead, GetGroupId API action will be used to obtain group Id by name.
+   - Updated SNS subscription protocol to email in the identity-center-automation.template
+      - Email as compared to email-json allowed adding formatting to the message within ic-alert-SNSnotification lambda function to send formatted and prettier JSON message. This improves readability of the Identity Center manual modification alerts. 
+   - Updated the Identity Center automation pipeline in the codepipeline-stack.template to ecent-driven pipeline.
+      - It is recommended to use event-based change detection for pipelines as opposed to polling for changes.
