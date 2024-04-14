@@ -487,7 +487,7 @@ Resources:
       TopicName: IC-Manual-Modification-Detection-Alert
       Subscription:
         - Endpoint: !Ref SNSEmailEndpointSubscription
-          Protocol: email-json
+          Protocol: email
 
   #####################################################
   ## Lambda function(3) to customize SNS Email Subject#
@@ -511,9 +511,9 @@ Resources:
             print(event)
             try:
               if event['detail']['eventName']:
-                resp = sns_client.publish(TargetArn=sns_arn, Message=json.dumps(event).replace('"',''), Subject=sns_email_subject+" - "+event['detail']['eventName'])
+                resp = sns_client.publish(TargetArn=sns_arn, Message="The following manual change was detected and will be reverted:"+"\n\n"+json.dumps(event, indent=4, sort_keys=False).replace('"',''), Subject=sns_email_subject+" - "+event['detail']['eventName'])
               else:
-                resp = sns_client.publish(TargetArn=sns_arn, Message=json.dumps(event).replace('"',''), Subject=sns_email_subject+" - Unknown")
+                resp = sns_client.publish(TargetArn=sns_arn, Message="The following manual change was detected and will be reverted:"+"\n\n"+json.dumps(event, indent=4, sort_keys=False).replace('"',''), Subject=sns_email_subject+" - Unknown")
               print(resp)
               print("Info.Execution completed correctly.")
             except Exception as ex:
