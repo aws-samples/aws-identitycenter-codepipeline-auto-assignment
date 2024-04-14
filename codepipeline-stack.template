@@ -77,7 +77,53 @@ Resources:
                 'aws:PrincipalArn':
                   - !GetAtt CodePipelineServiceRole.Arn
                   - !GetAtt CodeBuildRole.Arn
-
+  PipelineSourceEventRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        -
+          PolicyName: Identity-Center-Automation-pipeline-execution
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Effect: Allow
+                Action: codepipeline:StartPipelineExecution
+                Resource: !Join [ '', [ 'arn:aws:codepipeline:', !Ref 'AWS::Region', ':', !Ref 'AWS::AccountId', ':', !Ref AWSCodePipeline ] ]
+  PipelineSourceEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - aws.codecommit
+        detail-type:
+          - 'CodeCommit Repository State Change'
+        resources:
+          - !Join [ '', [ 'arn:aws:codecommit:', !Ref 'AWS::Region', ':', !Ref 'AWS::AccountId', ':', !Ref RepositoryName ] ]
+        detail:
+          event:
+            - referenceCreated
+            - referenceUpdated
+          referenceType:
+            - branch
+          referenceName:
+            - !Ref RepoBranch
+      Targets:
+        -
+          Arn: 
+            !Join [ '', [ 'arn:aws:codepipeline:', !Ref 'AWS::Region', ':', !Ref 'AWS::AccountId', ':', !Ref AWSCodePipeline ] ]
+          RoleArn: !GetAtt PipelineSourceEventRole.Arn
+          Id: Identity-Center-Automation-Pipeline
   AWSCodePipeline:
     Type: 'AWS::CodePipeline::Pipeline'
     Properties:
@@ -98,10 +144,11 @@ Resources:
               Configuration:
                 RepositoryName: !Ref RepositoryName
                 BranchName: !Ref RepoBranch
+                PollForSourceChanges: false
               OutputArtifacts:
                 - Name: SourceArtifacts
               RunOrder: 1
-        - Name: ProvisionS3Bucket
+        - Name: ValidateAndPackage
           Actions:
             - Name: ParseandScan
               InputArtifacts:
@@ -143,7 +190,7 @@ Resources:
               Configuration:
                 ProjectName: !Ref CodeBuildProjectS3Upload
               RunOrder: 3
-        - Name: BuildICTemplate
+        - Name: BuildICTemplateAndSyncMappingFiles
           Actions:
             - Name: BuildICTemplate
               ActionTypeId:
