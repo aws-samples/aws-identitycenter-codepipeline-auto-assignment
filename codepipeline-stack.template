@@ -363,7 +363,7 @@ Resources:
             Statement:
               # - Effect: Allow
               #   Action:
-              #     - 'cloudwatch:*' # 待定
+              #     - 'cloudwatch:*'
               #   Resource: '*'
               - Effect: Allow
                 Action:
@@ -456,4 +456,5 @@ Resources:
                   - 'sns:GetTopicAttributes'
                   - 'sns:DeleteTopic'
                   - 'sns:Unsubscribe'
+                  - 'sns:ListSubscriptionsByTopic'
                 Resource: '*'
