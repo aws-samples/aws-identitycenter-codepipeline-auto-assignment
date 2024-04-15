@@ -408,6 +408,7 @@ def get_all_permission_sets_if_delegate(pipeline_id):
             sleep(0.1)  # Aviod hitting API limit.
             while 'NextToken' in list_accounts_for_provisioned_perm_set:
                 list_accounts_for_provisioned_perm_set = ic_admin.list_accounts_for_provisioned_permission_set(
+                    InstanceArn=ic_instance_arn,
                     PermissionSetArn=perm_set_arn,
                     MaxResults=100,
                     NextToken=list_accounts_for_provisioned_perm_set['NextToken']
@@ -439,20 +440,21 @@ def get_all_permission_sets_if_delegate(pipeline_id):
 def get_groupid(group_display_name):
     """Get the all the IAM Identity Center group names and ids"""
     try:
-        response = identitystore_client.list_groups(
+        response = identitystore_client.get_group_id(
             IdentityStoreId=identity_store_id,
-            Filters=[
+            AlternateIdentifier= {
+                'UniqueAttribute':
                 {
                     'AttributePath': 'DisplayName',
                     'AttributeValue': str(group_display_name)
-                },
-            ]
+                }
+            }
         )
-        if response['Groups'] == []:
-            logger.error("%s does not exist.", group_display_name)
+        if response['GroupId'] == []:
+            logger.error("Group %s does not exist.", group_display_name)
             group_id = None
         else:
-            group_id = response['Groups'][0]['GroupId']
+            group_id = response['GroupId']
     except identitystore_client.exceptions.ThrottlingException as error:
         logger.warning("%s. Hit ListGroup API limit. Sleep 5s...", error)
         sleep(5)

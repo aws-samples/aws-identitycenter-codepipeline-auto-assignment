@@ -28,12 +28,20 @@ Parameters:
       default value.
     Type: String
     Default: identity-center-auto-assign.zip
+  AssignmentLambdaZipFileVersion:
+    Description: >-
+      Lambda function code zip version to point Lambda to the latest version of the object.
+    Type: String
   PermissionSetsLambdaZipFileName:
     Description: >-
       Lambda function code that manages IAM Identity Center permission sets. You can use the
       default value.
     Type: String
     Default: identity-center-auto-permissionsets.zip
+  PermissionSetsLambdaZipFileVersion:
+    Description: >-
+      Lambda function code zip version to point Lambda to the latest version of the object.
+    Type: String
   SNSEmailEndpointSubscription:
     Description: The SNS subscription which used to receive SNS email notification.
     Type: String
@@ -107,7 +115,8 @@ Resources:
             - !Sub ${AWS::AccountId}
             - !Sub ${AWS::Region}
         S3Key: !Ref PermissionSetsLambdaZipFileName
-      Runtime: "python3.9"
+        S3ObjectVersion: !Ref PermissionSetsLambdaZipFileVersion
+      Runtime: "python3.12"
       Environment:
         Variables:
           IC_InstanceArn: !Ref ICInstanceARN
@@ -152,7 +161,6 @@ Resources:
                 Action:
                   - "sso:AttachCustomerManagedPolicyReferenceToPermissionSet"
                   - "sso:AttachManagedPolicyToPermissionSet"
-                  - "sso:ListAccountAssignments"
                   - "sso:CreatePermissionSet"
                   - "sso:DeletePermissionSet"
                   - "sso:DeletePermissionsBoundaryFromPermissionSet"
@@ -167,6 +175,8 @@ Resources:
                   - "sso:GetPermissionSet"
                   - "sso:GetPermissionsBoundaryForPermissionSet"
                   - "sso:GetPermissionsPolicy"
+                  - "sso:ListAccountAssignments"
+                  - "sso:DeleteAccountAssignment"
                   - "sso:ListAccountsForProvisionedPermissionSet"
                   - "sso:ListCustomerManagedPolicyReferencesInPermissionSet"
                   - "sso:ListManagedPoliciesInPermissionSet"
@@ -240,7 +250,8 @@ Resources:
             - !Sub ${AWS::AccountId}
             - !Sub ${AWS::Region}
         S3Key: !Ref AssignmentLambdaZipFileName
-      Runtime: "python3.9"
+        S3ObjectVersion: !Ref AssignmentLambdaZipFileVersion
+      Runtime: "python3.12"
       Environment:
         Variables:
           IC_InstanceArn: !Ref ICInstanceARN
@@ -296,6 +307,7 @@ Resources:
                   - "iam:PutRolePolicy"
                   - "iam:UpdateSAMLProvider"
                   - "identitystore:ListGroups"
+                  - "identitystore:GetGroupId"
                   - "logs:CreateLogDelivery"
                   - "logs:CreateLogGroup"
                   - "logs:CreateLogStream"
@@ -487,7 +499,7 @@ Resources:
       TopicName: IC-Manual-Modification-Detection-Alert
       Subscription:
         - Endpoint: !Ref SNSEmailEndpointSubscription
-          Protocol: email-json
+          Protocol: email
 
   #####################################################
   ## Lambda function(3) to customize SNS Email Subject#
@@ -511,16 +523,16 @@ Resources:
             print(event)
             try:
               if event['detail']['eventName']:
-                resp = sns_client.publish(TargetArn=sns_arn, Message=json.dumps(event).replace('"',''), Subject=sns_email_subject+" - "+event['detail']['eventName'])
+                resp = sns_client.publish(TargetArn=sns_arn, Message="The following manual change was detected and will be reverted:"+"\n\n"+json.dumps(event, indent=4, sort_keys=False).replace('"',''), Subject=sns_email_subject+" - "+event['detail']['eventName'])
               else:
-                resp = sns_client.publish(TargetArn=sns_arn, Message=json.dumps(event).replace('"',''), Subject=sns_email_subject+" - Unknown")
+                resp = sns_client.publish(TargetArn=sns_arn, Message="The following manual change was detected and will be reverted:"+"\n\n"+json.dumps(event, indent=4, sort_keys=False).replace('"',''), Subject=sns_email_subject+" - Unknown")
               print(resp)
               print("Info.Execution completed correctly.")
             except Exception as ex:
               print(ex)
               print("Error.Execution completed incorrectly")
             return {'statusCode': 200,'body': json.dumps('successfully executed lambda')}
-      Runtime: "python3.9"
+      Runtime: "python3.12"
       Environment:
         Variables:
           SNSTopic_ARN: !Ref SNSICManualActionAlertTopic
