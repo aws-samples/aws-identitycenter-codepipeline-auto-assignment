@@ -20,6 +20,7 @@ phases:
       - cat ic-automation-parameters.json
       - cat ic-s3-parameters.json
       - echo "Parameter Process is done."
+      - ls -lah
       # CFN Template Linting and Security Scans 
       - echo "Start scanning CloudFormation templates using cfn-nag Tool......."
       - cfn_nag_scan --input-path codepipeline-stack.template
