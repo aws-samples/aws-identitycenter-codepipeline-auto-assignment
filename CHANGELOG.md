@@ -53,8 +53,8 @@
 ## 2.1.0
    - Bug fix: Pipeline failed with 'Parameter validation failed: Missing required parameter in input: "InstanceArn"' in cases where more than the response returned more than 100 items and needed to be iterated through.
       - Added the missing InstanceArn=ic_instance_arn to allow proper functioning of list_accounts_for_provisioned_permission_set API. 
-   - Bug fix: any updated to the Lambda source code did not update the Lambda function code upon successful pipeline execution.
-      - Updated the buildspec to add tags to the lambda zip file objects in S3 and obtain object versions. The versions are now referred in the Lambda cofiguration to allow subsequent updates to lambda package code. 
+   - Bug fix: any updates to the Lambda source code did not update the Lambda function code upon successful pipeline execution.
+      - Updated the buildspec to add tags to the lambda zip file objects in S3 and obtain object versions. The versions are now referenced in the Lambda cofiguration to allow subsequent updates to lambda package code. 
    - Updated the list_groups API to get_group_id API and removed the use of depricated filter method to obtain group Id by name in the auto-assignment.py.
       - list_groups returns a paginated list of complete Group objects. Filtering for a Group by the DisplayName attribute is deprecated. Instead, GetGroupId API action will be used to obtain group Id by name.
    - Updated the Lambda runtime to the latest python3.12.
