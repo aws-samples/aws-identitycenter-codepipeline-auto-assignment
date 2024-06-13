@@ -208,12 +208,50 @@ def get_target_mapping_contents(bucketname, target_mapping_file, pipeline_id):
         quit()
     return json_object
 
+def validate_permission_set_file_structure(permission_set_file):
+    """
+    Validate the structure of the permission set file.
+    """
+    required_keys = {
+        "GlobalGroupName": str,
+        "PermissionSetName": list,
+        "TargetAccountid": str
+    }
+
+    if not isinstance(permission_set_file, list):
+        raise TypeError("The permission set file must be a list")
+
+    for idx, permission_set in enumerate(permission_set_file):
+        if not isinstance(permission_set, dict):
+            raise TypeError(f"Each item in the permission set file must be a dictionary. Item at index {idx} is not a dictionary.")
+
+        for key, expected_type in required_keys.items():
+            if key not in permission_set:
+                raise ValueError(f"Missing required key: {key} in permission set at index {idx}")
+            if not isinstance(permission_set[key], expected_type):
+                raise TypeError(f"Key '{key}' is not of expected type {expected_type.__name__} in permission set at index {idx}")
+
+        # Additional check for 'PermissionSetName' to ensure it's a list of strings
+        if not all(isinstance(item, str) for item in permission_set["PermissionSetName"]):
+            raise ValueError(f"All items in 'PermissionSetName' must be strings in permission set at index {idx}")
 
 def global_group_array_mapping(acct_list, global_file_contents,
                                current_aws_permission_sets,
                                pipeline_id):
     """Create global group mapping assignments"""
-    logger.info("Starting global group assignement")
+    logger.info("Starting global group assignment")
+
+    # Validate the structure of the global file contents
+    try:
+        validate_permission_set_file_structure(global_file_contents)
+    except (ValueError, TypeError) as e:
+        logger.error("Validation error in global file contents: %s", e)
+        pipeline.put_job_failure_result(
+            jobId=pipeline_id,
+            failureDetails={'message': str(e), 'type': 'JobFailed'}
+        )
+        return
+
     if global_file_contents:
         for account in acct_list:
             if account['Status'] != "SUSPENDED":
