@@ -45,7 +45,7 @@ def sync_table_for_skipped_perm_sets(skipped_perm_set):
         response = dynamodb.scan(
             TableName='ic-SkippedPermissionSetsTable')
         items = response['Items']
-        print(f"Items in DynamoDB table: {items}")
+        logger.info(f"Items in DynamoDB table: {items}")
         for item in items:
             # If the permission set is not in the current skipped_perm_set, delete it from the table
             if item['perm_set_arn']['S'] not in skipped_perm_set:
@@ -53,7 +53,7 @@ def sync_table_for_skipped_perm_sets(skipped_perm_set):
                     TableName='ic-SkippedPermissionSetsTable',
                     Key={'perm_set_arn': item['perm_set_arn']}
                 )
-                print(f"Drift detected in DynamoDB table. Deleted item: {item} from table.")
+                logger.info(f"Drift detected in DynamoDB table. Deleted item: {item} from table.")
 
             sleep(0.1)
 
@@ -104,10 +104,11 @@ def get_all_permission_sets(pipeline_id):
             sleep(0.1)  # Aviod hitting API limit.
             description = ''
             try:
-                description = describe_perm_set['PermissionSet']['Description']
+                description = describe_perm_set['PermissionSet'].get('Description', '-')
             except Exception as error:
                 logger.error(
                     "Failed to get description for permission set %s. Error: %s", perm_set_arn, error)
+                description = 'Error retrieving description'
             perm_set_name = describe_perm_set['PermissionSet']['Name']
             perm_set_arn = describe_perm_set['PermissionSet']['PermissionSetArn']
             list_tags = ic_admin.list_tags_for_resource(
@@ -139,8 +140,7 @@ def get_all_permission_sets(pipeline_id):
         logger.warning("Hit IAM Identity Center API limits. Sleep 5s...%s", error)
         sleep(5)
     except ic_admin.exceptions.ConflictException as error:
-        logger.info("The same IAM Identity Center process has been started \
-                    in another invocation, skipping...%s", error)
+        logger.warning("The same IAM Identity Center process has been started in another invocation, skipping...%s", error)
         sleep(2)
     except ClientError as error:
         logger.error("%s", error)
@@ -218,8 +218,7 @@ def get_all_permission_sets_if_delegate(pipeline_id):
         logger.warning("Hit IAM Identity Center API limits. Sleep 5s...%s", error)
         sleep(5)
     except ic_admin.exceptions.ConflictException as error:
-        logger.info("The same IAM Identity Center process has been started \
-                    in another invocation, skipping...%s", error)
+        logger.warning("The same IAM Identity Center process has been started in another invocation, skipping...%s", error)
         sleep(2)
     except ClientError as error:
         logger.error("%s", error)
@@ -278,12 +277,10 @@ def create_permission_set(name, desc, tags, session_duration, pipeline_id):
         )
         sleep(0.1)  # Aviod hitting API limit.
     except ic_admin.exceptions.ThrottlingException as error:
-        logger.warning(
-            "%sHit CreatePermissionSet API limits. Sleep 5s.", error)
+        logger.warning("%sHit CreatePermissionSet API limits. Sleep 5s.", error)
         sleep(5)
     except ic_admin.exceptions.ConflictException as error:
-        logger.info("%sThe same IAM Identity Center process has been \
-                    started in another invocation, skipping...", error)
+        logger.info("%sThe same IAM Identity Center process has been started in another invocation, skipping...", error)
         sleep(2)
     except ClientError as error:
         logger.error("%s", error)
@@ -311,8 +308,7 @@ def add_managed_policy_to_perm_set(perm_set_arn, managed_policy_arn,
         logger.warning("%s.Hit API limits. Sleep 2s.", error)
         sleep(2)
     except ic_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same IAM Identity Center process has been started in \
-                    another invocation, skipping...", error)
+        logger.warning("%s.The same IAM Identity Center process has been started in another invocation, skipping...", error)
     except ClientError as error:
         logger.error("%s", error)
         pipeline.put_job_failure_result(
@@ -337,8 +333,7 @@ def remove_managed_policy_from_perm_set(perm_set_arn, managed_policy_arn, pipeli
         logger.warning("%s.Hit API limits. Sleep 2s...", error)
         sleep(2)
     except ic_admin.exceptions.ConflictException as error:
-        logger.info(
-            "%s.The same IAM Identity Center process has been started in another invocation, skipping...", error)
+        logger.warning("%s.The same IAM Identity Center process has been started in another invocation, skipping...", error)
     except ClientError as error:
         logger.error("%s", error)
         pipeline.put_job_failure_result(
@@ -368,8 +363,7 @@ def add_cx_managed_policy_to_perm_set(perm_set_arn, policy_name,
         logger.warning("%s.Hit API limits. Sleep 2s.", error)
         sleep(2)
     except ic_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same IAM Identity Center process has been started in \
-                    another invocation, skipping...", error)
+        logger.warning("%s.The same IAM Identity Center process has been started in another invocation, skipping...", error)
     except ClientError as error:
         logger.error("%s", error)
         pipeline.put_job_failure_result(
@@ -453,8 +447,7 @@ def sync_managed_policies(local_managed_policies, perm_set_arn, pipeline_id):
             "%s.Hit IAM Identity Center API limits. Sleep 5s.", error)
         sleep(5)
     except ic_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same IAM Identity Center process has been started \
-                    in another invocation, skipping...", error)
+        logger.warning("%s.The same IAM Identity Center process has been started in another invocation, skipping...", error)
         sleep(2)
     except Exception as error:
         logger.error("%s", error)
@@ -508,8 +501,7 @@ def sync_customer_policies(local_customer_policies, perm_set_arn, pipeline_id):
             "%s.Hit IAM Identity Center API limits. Sleep 5s.", error)
         sleep(5)
     except ic_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same IAM Identity Center process has been started \
-                    in another invocation, skipping...", error)
+        logger.warning("%s.The same IAM Identity Center process has been started in another invocation, skipping...", error)
         sleep(2)
     except Exception as error:
         logger.error("%s", error)
@@ -539,8 +531,7 @@ def remove_inline_policies(perm_set_arn, pipeline_id):
             "%s.Hit IAM Identity Center API limit. Sleep 5s..", error)
         sleep(5)
     except ic_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same IAM Identity Center process has been started \
-                    in another invocation, skipping...", error)
+        logger.warning("%s.The same IAM Identity Center process has been started in another invocation, skipping...", error)
         sleep(2)
     except ClientError as error:
         logger.error("%s", error)
@@ -566,8 +557,7 @@ def sync_inline_policies(local_inline_policy, perm_set_arn, pipeline_id):
                 "%s.Hit IAM Identity Center API limit. Sleep 5s...", error)
             sleep(5)
         except ic_admin.exceptions.ConflictException as error:
-            logger.info("%s.The same IAM Identity Center process has been started \
-                        in another invocation, skipping...", error)
+            logger.warning("%s.The same IAM Identity Center process has been started in another invocation, skipping...", error)
         except ClientError as error:
             logger.warning("%s", error)
             pipeline.put_job_failure_result(
@@ -588,12 +578,10 @@ def delete_permission_set(perm_set_arn, perm_set_name, pipeline_id):
         logger.info('%s Permission set deleted', perm_set_name)
         sleep(0.1)  # Aviod hitting API limit.
     except ic_admin.exceptions.ThrottlingException as error:
-        logger.warning(
-            "%s.Hit delete_permission_set API limits. Sleep 5s..", error)
+        logger.warning("%s.Hit delete_permission_set API limits. Sleep 5s..", error)
         sleep(5)
     except ic_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same IAM Identity Center process has been started \
-                    in another invocation, skipping...", error)
+        logger.warning("%sThe same IAM Identity Center process has been started in another invocation, skipping...", error)
     except ClientError as error:
         logger.error("%s", error)
         pipeline.put_job_failure_result(
@@ -758,8 +746,7 @@ def deprovision_permission_set_from_accounts(perm_set_arn,
         logger.warning("%s.Hit API limits. Sleep 5s...", error)
         sleep(5)
     except ic_admin.exceptions.ConflictException as error:
-        logger.info("%s.The same IAM Identity Center process has been started \
-                    in another invocation, skipping...", error)
+        logger.warning("%sThe same IAM Identity Center process has been started in another invocation, skipping...", error)
         sleep(2)
     except ClientError as error:
         logger.error("%s", error)
@@ -790,8 +777,7 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn, pipeline_id):
             logger.warning("%s.Hit API limits. Sleep 5s...", error)
             sleep(5)
         except ic_admin.exceptions.ConflictException as error:
-            logger.info("%sThe same IAM Identity Center process has been started \
-                        in another invocation, skipping...", error)
+            logger.warning("%sThe same IAM Identity Center process has been started in another invocation, skipping...", error)
             sleep(2)
         except ClientError as error:
             logger.error("%s", error)
@@ -837,8 +823,7 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn, pipeline_id):
             logger.warning("%sHit API limits. Sleep 5s...", error)
             sleep(5)
         except ic_admin.exceptions.ConflictException as error:
-            logger.info("The same IAM Identity Center process has been started \
-                        in another invocation, skipping...", error)
+            logger.warning("The same IAM Identity Center process has been started in another invocation, skipping...", error)
             sleep(2)
         except ClientError as error:
             logger.error("%s", error)
@@ -847,17 +832,75 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn, pipeline_id):
                 failureDetails={'message': str(error), 'type': 'JobFailed'}
             )
 
+def validate_permission_set_schema(permission_set):
+    """
+    Validate the permission set schema.
+    """
+    required_keys = {
+        "Name": str,
+        "ManagedPolicies": list,
+        "InlinePolicies": (list, dict)
+    }
+
+    optional_keys = {
+        "Description": str,
+        "Tags": list,
+        "CustomerPolicies": list,
+        "Session_Duration": str
+    }
+
+    permission_set_name = permission_set.get('Name', 'Unknown')
+
+    # Validate required keys
+    for key, expected_type in required_keys.items():
+        if key not in permission_set:
+            raise ValueError(f"Missing required key: {key} in permission set {permission_set_name}")
+        if not isinstance(permission_set[key], expected_type):
+            raise TypeError(f"Key '{key}' is not of expected type {expected_type.__name__} in permission set {permission_set_name}")
+
+    # Validate optional keys if they are present
+    for key, expected_type in optional_keys.items():
+        if key in permission_set and not isinstance(permission_set[key], expected_type):
+            raise TypeError(f"Optional key '{key}' is not of expected type {expected_type.__name__} in permission set {permission_set_name}")
+
+    # Additional checks for 'Tags'
+    if 'Tags' in permission_set:
+        for tag in permission_set["Tags"]:
+            if not isinstance(tag, dict) or "Key" not in tag or "Value" not in tag:
+                raise ValueError(f"Each tag must be a dictionary with 'Key' and 'Value' fields in permission set {permission_set_name}")
+
+    # Additional checks for 'ManagedPolicies'
+    for policy in permission_set["ManagedPolicies"]:
+        if not isinstance(policy, dict) or "Name" not in policy or "Arn" not in policy:
+            raise ValueError(f"Each managed policy must be a dictionary with 'Name' and 'Arn' fields in permission set {permission_set_name}")
+
+    # Additional checks for 'InlinePolicies' if it is a list or dict
+    inline_policies = permission_set["InlinePolicies"]
+    if isinstance(inline_policies, list):
+        if inline_policies:  # If the list is not empty, raise an error
+            raise ValueError(f"InlinePolicies list must be empty [] in permission set {permission_set_name}")
+    elif isinstance(inline_policies, dict):
+        if not ("Version" in inline_policies and "Statement" in inline_policies):
+            raise ValueError(f"InlinePolicies dictionary must contain 'Version' and 'Statement' keys in permission set {permission_set_name}")
+    else:
+        raise TypeError(f"InlinePolicies must be either a list or a dictionary in permission set {permission_set_name}")
+
+
+
 def sync_json_with_aws(local_files, aws_permission_sets, pipeline_id):
     """Synchronize the repository's json files with the AWS Permission Sets"""
     local_permission_set_names = []
     local_customer_policies = []
     try:
+        logger.info("Syncing permission sets into Identity Center")
         for local_file in local_files:
             local_session_duration = default_session_duration
             local_permission_set = local_files[local_file]
+            validate_permission_set_schema(local_permission_set)
+            logger.info("Syncing %s", local_permission_set['Name'])
             local_name = local_permission_set['Name']
-            local_desc = local_permission_set['Description']
-            local_tags = local_permission_set['Tags']
+            local_desc = local_permission_set.get('Description', '-')
+            local_tags = local_permission_set.get('Tags', [])
             local_managed_policies = local_permission_set['ManagedPolicies']
             local_inline_policy = local_permission_set['InlinePolicies']
             local_permission_set_names.append(local_name)
@@ -903,12 +946,15 @@ def sync_json_with_aws(local_files, aws_permission_sets, pipeline_id):
         # If a permission set exists in AWS but not on the local - delete it
         for aws_perm_set in aws_permission_sets:
             if not aws_perm_set in local_permission_set_names:
-                logger.info(
-                    'DELETE OPERATION: %s does not exist locally - deleting...', aws_perm_set)
-                deprovision_permission_set_from_accounts(
+                try:
+                    logger.info(
+                        'DELETE OPERATION: %s does not exist locally - deleting...', aws_perm_set)
+                    deprovision_permission_set_from_accounts(
+                            aws_permission_sets[aws_perm_set]['Arn'], aws_perm_set, pipeline_id)
+                    delete_permission_set(
                         aws_permission_sets[aws_perm_set]['Arn'], aws_perm_set, pipeline_id)
-                delete_permission_set(
-                    aws_permission_sets[aws_perm_set]['Arn'], aws_perm_set, pipeline_id)
+                except Exception as error:
+                    logger.error("Delete failed due to %s", error)
     except Exception as error:
         logger.error("Sync AWS permission sets failed due to %s", error)
         pipeline.put_job_failure_result(
@@ -949,66 +995,74 @@ def lambda_handler(event, context):
 
     pipeline_id = ""
 
-    if 'RequestType' in event and event['RequestType'] == 'Delete':
-        cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+    try:
+        if event.get('RequestType') == 'Delete':
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
 
-    elif 'CodePipeline.job' in event:
-        try:
-            pipeline_id = event['CodePipeline.job']['id']
-            logger.info("The automation process is now started. %s",
-                        str(pipeline_id))
-            if delegated == "true":
-                aws_permission_sets = get_all_permission_sets_if_delegate(pipeline_id)
-                logger.info("The existing aws_permission_sets are : %s",
-                        aws_permission_sets)
-            else:
-                aws_permission_sets = get_all_permission_sets(pipeline_id)
-                logger.info("The existing aws_permission_sets are : %s",
-                        aws_permission_sets)
-            # Get the permission set's baseline by loading S3 bucket files
-            json_files = get_all_json_files(ic_bucket_name, pipeline_id)
-            sync_json_with_aws(json_files, aws_permission_sets, pipeline_id)
-            # Invoke Next automation lambda function
-            logger.info("Published sns topic to invoke auto assignment function. \
-                        Check the auto assignment lambda funcion log for further execution details.")
-            accountid = context.invoked_function_arn.split(':')[4]
-            invoke_auto_assignment(sns_topic_name, accountid, pipeline_id)
+        elif 'CodePipeline.job' in event:
+            try:
+                pipeline_id = event['CodePipeline.job']['id']
+                logger.info("The automation process is now started. %s",
+                            str(pipeline_id))
+                if delegated == "true":
+                    aws_permission_sets = get_all_permission_sets_if_delegate(pipeline_id)
+                    logger.info("The existing aws_permission_sets are : %s",
+                            aws_permission_sets)
+                else:
+                    aws_permission_sets = get_all_permission_sets(pipeline_id)
+                    logger.info("The existing aws_permission_sets are : %s",
+                            aws_permission_sets)
+                # Get the permission set's baseline by loading S3 bucket files
+                json_files = get_all_json_files(ic_bucket_name, pipeline_id)
+                sync_json_with_aws(json_files, aws_permission_sets, pipeline_id)
+                # Invoke Next automation lambda function
+                logger.info("Published sns topic to invoke auto assignment function. \
+                            Check the auto assignment lambda funcion log for further execution details.")
+                accountid = context.invoked_function_arn.split(':')[4]
+                invoke_auto_assignment(sns_topic_name, accountid, pipeline_id)
 
-        except Exception as error:
-            logger.error("%s", error)
-            pipeline.put_job_failure_result(
-                jobId=pipeline_id,
-                failureDetails={'message': str(error), 'type': 'JobFailed'}
-            )
+            except Exception as error:
+                logger.error("%s", error)
+                pipeline.put_job_failure_result(
+                    jobId=pipeline_id,
+                    failureDetails={'message': str(error), 'type': 'JobFailed'}
+                )
 
-    elif event['detail-type'] == 'AWS API Call via CloudTrail':
-        sleep(10)
-        event_detail_type = event['detail-type']
-        try:
-            print("The automation process is now started. This event is triggered by EventBridge")
-            if delegated == "true":
-                aws_permission_sets = get_all_permission_sets_if_delegate(pipeline_id)
-                logger.info("The existing aws_permission_sets are : %s",
-                        aws_permission_sets)
-            else:
-                aws_permission_sets = get_all_permission_sets(pipeline_id)
-                logger.info("The existing aws_permission_sets are : %s",
-                        aws_permission_sets)
-            # Get the permission set's baseline by loading S3 bucket files
-            json_files = get_all_json_files(ic_bucket_name, pipeline_id)
-            sync_json_with_aws(json_files, aws_permission_sets, pipeline_id)
-            # Invoke Next automation lambda function
-            print("Published sns topic to invoke auto assignment function.")
-            logger.info("Published sns topic to invoke auto assignment function. \
-                        Check the auto assignment lambda funcion log for further execution details.")
-            accountid = context.invoked_function_arn.split(':')[4]
-            print(f"Account ID: {accountid}")
-            print(f"SNS Topic Name: {sns_topic_name}")
-            invoke_auto_assignment(sns_topic_name, accountid, event_detail_type)
+        elif event.get('detail-type') == 'AWS API Call via CloudTrail':
+            sleep(10)
+            event_detail_type = event['detail-type']
+            try:
+                logger.info("The automation process is now started. This event is triggered by EventBridge")
+                if delegated == "true":
+                    aws_permission_sets = get_all_permission_sets_if_delegate(pipeline_id)
+                    logger.info("The existing aws_permission_sets are : %s",
+                            aws_permission_sets)
+                else:
+                    aws_permission_sets = get_all_permission_sets(pipeline_id)
+                    logger.info("The existing aws_permission_sets are : %s",
+                            aws_permission_sets)
+                # Get the permission set's baseline by loading S3 bucket files
+                json_files = get_all_json_files(ic_bucket_name, pipeline_id)
+                sync_json_with_aws(json_files, aws_permission_sets, pipeline_id)
+                # Invoke Next automation lambda function
+                print("Published sns topic to invoke auto assignment function.")
+                logger.info("Published sns topic to invoke auto assignment function. \
+                            Check the auto assignment lambda function log for further execution details.")
+                accountid = context.invoked_function_arn.split(':')[4]
+                print(f"Account ID: {accountid}")
+                print(f"SNS Topic Name: {sns_topic_name}")
+                invoke_auto_assignment(sns_topic_name, accountid, event_detail_type)
 
-        except Exception as error:
-            logger.error("%s", error)
-            pipeline.put_job_failure_result(
-                jobId=pipeline_id,
-                failureDetails={'message': str(error), 'type': 'JobFailed'}
-            )
+            except Exception as error:
+                logger.error("%s", error)
+                pipeline.put_job_failure_result(
+                    jobId=pipeline_id,
+                    failureDetails={'message': str(error), 'type': 'JobFailed'}
+                )
+        else:
+            logger.error("Unhandled event: %s", event)
+
+    except KeyError as e:
+        logger.error("KeyError: Missing key in event. %s", e)
+    except Exception as e:
+        logger.error("Exception: %s", e)
