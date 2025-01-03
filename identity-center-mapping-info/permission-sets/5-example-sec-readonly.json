@@ -1,0 +1,35 @@
+{
+    "Name": "5-example-sec-readonly",
+    "Description": "5-example-security-readonly",
+    "Tags": [
+        {
+            "Key": "identity-center-solution",
+            "Value": "test"
+        },
+        {
+            "Key": "scope",
+            "Value": "individual"
+        }
+    ],
+    "ManagedPolicies": [
+        {
+            "Name": "CloudWatchEventsReadOnlyAccess",
+            "Arn": "arn:aws:iam::aws:policy/CloudWatchEventsReadOnlyAccess"
+        },
+        {
+            "Name": "AWSSupportAccess",
+            "Arn": "arn:aws:iam::aws:policy/AWSSupportAccess"
+        }
+    ],
+    "CustomerPolicies": [
+        {
+            "Name": "customer-managed-policy-1",
+            "Path": "/IAM-path-example/"
+        },
+        {
+            "Name": "customer-managed-policy-2",
+            "Path": "/"
+        }
+    ], 
+    "InlinePolicies": []
+}

@@ -1,0 +1,30 @@
+version: 0.2
+
+env:
+  git-credential-helper: yes
+phases:
+  pre_build:
+    commands:
+      - apt-get install jq
+  build:
+    commands:
+      - echo "Sync lambda code to S3 bucket"
+      - pwd
+      - ls -lah
+      #Build source code Zip file with no folder structure
+      - zip -j identity-center-auto-assign.zip src/automation-code/identity-center-auto-assign/*.py
+      - zip -j identity-center-auto-permissionsets.zip src/automation-code/identity-center-auto-permissionsets/*.py
+      - ls -lah
+      #Upload automation source zip code using aws sync. The bucket name is defined in identity-center-s3-bucket.template
+      - aws s3 sync .  s3://$S3_BUCKET_NAME/  --exclude "*" --include "identity-center-auto-assign.zip"
+      - aws s3 sync .  s3://$S3_BUCKET_NAME/  --exclude "*" --include "identity-center-auto-permissionsets.zip"
+      - aws s3api list-objects-v2 --bucket $S3_BUCKET_NAME
+      - IC_AUTO_ASSIGN_VERSION_ID=$(aws s3api put-object-tagging --bucket $S3_BUCKET_NAME --key identity-center-auto-assign.zip --tagging 'TagSet=[{Key=version,Value=latest}]' --output text)
+      - IC_AUTO_PERMISSIONS_VERSION_ID=$(aws s3api put-object-tagging --bucket $S3_BUCKET_NAME --key identity-center-auto-permissionsets.zip --tagging 'TagSet=[{Key=version,Value=latest}]' --output text)
+      - jq --arg AssignmentAutomationZipFileVersion "$IC_AUTO_ASSIGN_VERSION_ID" '.Parameters.AssignmentAutomationZipFileVersion = $AssignmentAutomationZipFileVersion' ic-automation-parameters.json > temp.json && mv temp.json ic-automation-parameters.json
+      - jq --arg PermissionSetsAutomationZipFileVersion "$IC_AUTO_PERMISSIONS_VERSION_ID" '.Parameters.PermissionSetsAutomationZipFileVersion = $PermissionSetsAutomationZipFileVersion' ic-automation-parameters.json > temp.json && mv temp.json ic-automation-parameters.json
+      - cat ic-automation-parameters.json
+
+artifacts:
+  files:
+    - '**/*'

@@ -1,0 +1,28 @@
+{
+    "Name": "3-example-billing",
+    "Description": "3-example-billing",
+    "Tags": [
+        {
+            "Key": "identity-center-solution",
+            "Value": "test"
+        },
+        {
+            "Key": "scope",
+            "Value": "global"
+        }
+    ],
+    "ManagedPolicies": [],
+    "InlinePolicies": {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "BillingReader",
+                "Effect": "Allow",
+                "Action": [
+                    "budgets:ViewBudget"
+                ],
+                "Resource": "*"
+            }
+        ]
+    }
+}

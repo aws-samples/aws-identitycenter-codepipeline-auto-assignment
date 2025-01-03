@@ -1,0 +1,18 @@
+{
+    "Parameters": {
+        "AdminDelegated": "true",
+        "ControlTowerEnabled": "true",
+        "OrgManagementAccount": "",
+        "OrganizationId": "",
+        "IdentityStoreId": "",
+        "ICInstanceARN": "",
+        "ICMappingBucketName": "ic-sso-automation",
+        "SNSEmailEndpointSubscription": "",
+        "createICAdminRole": "true",
+        "ICAutomationAdminArn": "",
+        "createICKMSAdminRole": "true",
+        "ICKMSAdminArn": "",
+        "createS3KmsKey": "true",
+        "S3KmsArn": ""
+    }
+}

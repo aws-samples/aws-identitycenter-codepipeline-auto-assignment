@@ -1,0 +1,21 @@
+{
+    "Name": "2-example-readonly",
+    "Description": "2-example-readonly",
+    "Tags": [
+        {
+            "Key": "identity-center-solution",
+            "Value": "test"
+        },
+        {
+            "Key": "scope",
+            "Value": "global"
+        }
+    ],
+    "ManagedPolicies": [
+        {
+            "Name": "SecurityAudit",
+            "Arn": "arn:aws:iam::aws:policy/SecurityAudit"
+        }
+    ],
+    "InlinePolicies": []
+}
