@@ -18,29 +18,37 @@ Parameters:
     Default: target-mapping.json
   ICMappingBucketName:
     Description: >-
-      The S3 bucket that stores the lambda code as well as permission set and
+      The S3 bucket that stores the source code as well as permission set and
       mapping definition. It's the same name that is used in
       identity-center-s3-bucket.template and the one you have specified in identity-center-stacks-parameters.json.
     Type: String
-  AssignmentLambdaZipFileName:
+  ArtifactBucketName:
     Description: >-
-      Lambda function code that manages IAM Identity Center account assignments. You can use the
+      The S3 bucket that stores the source artifacts. We are not using artifacts for this build but need to have permissions to allow Codepipeline to execute the build.
+    Type: String
+  AutomationBuildProjectName:
+    Description: 'The full name of the automation CodeBuild Project'
+    Type: String
+    Default: ic-automation-build-project
+  AssignmentAutomationZipFileName:
+    Description: >-
+      CodeBuild project code that manages IAM Identity Center account assignments. You can use the
       default value.
     Type: String
     Default: identity-center-auto-assign.zip
-  AssignmentLambdaZipFileVersion:
+  AssignmentAutomationZipFileVersion:
     Description: >-
-      Lambda function code zip version to point Lambda to the latest version of the object.
+      CodeBuild project code zip version to point build to the latest version of the object.
     Type: String
-  PermissionSetsLambdaZipFileName:
+  PermissionSetsAutomationZipFileName:
     Description: >-
-      Lambda function code that manages IAM Identity Center permission sets. You can use the
+      CodeBuild project code that manages IAM Identity Center permission sets. You can use the
       default value.
     Type: String
     Default: identity-center-auto-permissionsets.zip
-  PermissionSetsLambdaZipFileVersion:
+  PermissionSetsAutomationZipFileVersion:
     Description: >-
-      Lambda function code zip version to point Lambda to the latest version of the object.
+      CodeBuild project code zip version to point build to the latest version of the object.
     Type: String
   SNSEmailEndpointSubscription:
     Description: The SNS subscription which used to receive SNS email notification.
@@ -55,7 +63,7 @@ Parameters:
     Description: >-
       The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user)
       will have permissions to update IAM Identity Center settings without trigger the SNS notification,
-      besides the ICAssignmentAutomationLambdaRole and ICPermissionSetAutomationLambdaRole.
+      besides the ICPermissionSetAssignmentAutomationRole.
   OrgManagementAccount:
     Type: String
     Description: Account ID of the management account. Used only to ignore the assignments for management account creaated in the management account and the solution is deployed in delegated administrator acount.
@@ -75,7 +83,7 @@ Parameters:
     Description: Parameter to check if Control Tower is deployed
 Conditions:
   AdminDelegatedEqualsTrue: !Equals [!Ref AdminDelegated, "true"]
-  IsICAutomationAdminArnEmpty: !Equals [!Ref ICAutomationAdminArn, ""]
+  IsICAutomationAdminArnEmpty: !Equals [ !Ref ICAutomationAdminArn, ""]
   ControlTowerEnabledEqualsTrue: !Equals [!Ref ControlTowerEnabled, "true"]
   CTorAdminDelegated:
       !Or [Condition: ControlTowerEnabledEqualsTrue, Condition: AdminDelegatedEqualsTrue]
@@ -100,60 +108,141 @@ Resources:
       BillingMode: PAY_PER_REQUEST
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
-  ######################################################
-  # Lambda function(1) that manages IC permission sets #
-  ######################################################
-  ICPermissionSetAutomationLambda:
-    Type: "AWS::Lambda::Function"
+  #####################################################################
+  # Codebuild Project that manages IC permission sets and assignments #
+  #####################################################################
+  ICAutomationBuildProject:
+    Type: 'AWS::CodeBuild::Project'
     Properties:
-      FunctionName: ic-permissionsets-enabler
-      Handler: auto-permissionsets.lambda_handler
-      Code:
-        S3Bucket: !Join
-          - "-"
-          - - !Ref ICMappingBucketName
-            - !Sub ${AWS::AccountId}
-            - !Sub ${AWS::Region}
-        S3Key: !Ref PermissionSetsLambdaZipFileName
-        S3ObjectVersion: !Ref PermissionSetsLambdaZipFileVersion
-      Runtime: "python3.12"
+      Name: !Ref AutomationBuildProjectName
+      Description: >-
+        This build project runs automation to manage Permission Sets and assignments.
+      # EncryptionKey: alias/aws/s3
+      ServiceRole: !GetAtt ICPermissionSetAssignmentAutomationRole.Arn
+      Artifacts:
+        Type: NO_ARTIFACTS
       Environment:
-        Variables:
-          IC_InstanceArn: !Ref ICInstanceARN
-          IC_S3_BucketName: !Join
-            - "-"
-            - - !Ref ICMappingBucketName
-              - !Sub ${AWS::AccountId}
-              - !Sub ${AWS::Region}
-          Session_Duration: !Ref SessionDuration
-          SNS_Topic_Name: "ic-automation-topic"
-          Lambda_Region: !Ref "AWS::Region"
-          Org_Management_Account: !Ref OrgManagementAccount
-          AdminDelegated: !Ref AdminDelegated
-          SkippedPermissionSetsTableName: !If
-            - CTorAdminDelegated
-            - !Ref SkippedPermissionSetsTable
-            - ""
-      MemorySize: 256
-      Timeout: 900
-      Role: !GetAtt
-        - ICPermissionSetAutomationLambdaRole
-        - Arn
-  ICPermissionSetAutomationLambdaRole:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: 'aws/codebuild/standard:7.0'
+        EnvironmentVariables:
+          - Name: S3_BUCKET_NAME
+            Type: PLAINTEXT
+            Value: !Join
+              - '-'
+              - - !Ref ICMappingBucketName
+                - !Sub ${AWS::AccountId}
+                - !Sub ${AWS::Region}
+          - Name: IC_InstanceArn
+            Type: PLAINTEXT
+            Value: !Ref ICInstanceARN
+          - Name: IC_S3_BucketName
+            Type: PLAINTEXT
+            Value: !Join
+              - "-"
+              - - !Ref ICMappingBucketName
+                - !Sub ${AWS::AccountId}
+                - !Sub ${AWS::Region}
+          - Name: Session_Duration
+            Type: PLAINTEXT
+            Value: !Ref SessionDuration
+          - Name: AWS_REGION
+            Type: PLAINTEXT
+            Value: !Ref "AWS::Region"
+          - Name: Org_Management_Account
+            Type: PLAINTEXT
+            Value: !Ref OrgManagementAccount
+          - Name: AdminDelegated
+            Type: PLAINTEXT
+            Value: !Ref AdminDelegated
+          - Name: SkippedPermissionSetsTableName
+            Type: PLAINTEXT
+            Value: !If
+              - CTorAdminDelegated
+              - !Ref SkippedPermissionSetsTable
+              - ""
+          - Name: IdentityStore_Id
+            Type: PLAINTEXT
+            Value: !Ref IdentityStoreId
+          - Name: GlobalFileName
+            Type: PLAINTEXT
+            Value: !Ref GlobalICGroupMappingFileName
+          - Name: TargetFileName
+            Type: PLAINTEXT
+            Value: !Ref TargetICGroupMappingFileName
+          - Name: PermissionSetAutomationLogGroupName
+            Type: PLAINTEXT
+            Value: !Ref ICPermissionsAutomationLogGroup
+          - Name: AssignmentAutomationLogGroupName
+            Type: PLAINTEXT
+            Value: !Ref ICAssignmentAutomationLogGroup
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: !Sub |-
+          version: "0.2"
+          env:
+            shell: bash
+            variables:
+              EXIT_CODE: 0
+              PERM_SET_FUNCTION_EXIT_CODE: 0
+              ASSIGNMENT_FUNCTION_EXIT_CODE: 0
+              ERROR_MESSAGE: ""
+          phases:
+            pre_build:
+              commands:
+                - export DEBIAN_FRONTEND=noninteractive
+                - apt update
+                - apt-get install python3-pip -y -q
+                - pip3 install watchtower
+                - aws s3api get-object --bucket $S3_BUCKET_NAME --key ${PermissionSetsAutomationZipFileName} --version-id ${PermissionSetsAutomationZipFileVersion} ${PermissionSetsAutomationZipFileName}
+                - aws s3api get-object --bucket $S3_BUCKET_NAME --key ${AssignmentAutomationZipFileName} --version-id ${AssignmentAutomationZipFileVersion} ${AssignmentAutomationZipFileName}
+                - unzip -l ${PermissionSetsAutomationZipFileName}
+                - unzip -l ${AssignmentAutomationZipFileName}
+                - unzip -o ${PermissionSetsAutomationZipFileName} -d invoke_scripts
+                - unzip -o ${AssignmentAutomationZipFileName} -d invoke_scripts
+            build:
+              commands:
+                - cd invoke_scripts
+                - set -eux
+                - 'echo "Running the first function: auto-permissionsets.py"'
+                - python3 auto-permissionsets.py || PERM_SET_FUNCTION_EXIT_CODE=$?
+                - 'echo "Running the second function: auto-assignment.py"'
+                - python3 auto-assignment.py || ASSIGNMENT_FUNCTION_EXIT_CODE=$?
+                - |
+                  if [ $PERM_SET_FUNCTION_EXIT_CODE -ne 0 ]; then 
+                  ERROR_MESSAGE="[ERROR]First function (auto-permissionsets.py) failed with exit code $PERM_SET_FUNCTION_EXIT_CODE :( Please see function logs above or in CloudWatch for details"
+                  EXIT_CODE=$PERM_SET_FUNCTION_EXIT_CODE
+                  fi
+                  if [ $ASSIGNMENT_FUNCTION_EXIT_CODE -ne 0 ]; then 
+                  ERROR_MESSAGE="Second function (auto-assignment.py) failed with exit code $ASSIGNMENT_FUNCTION_EXIT_CODE :( Please see function logs above or in CloudWatch for details"
+                  EXIT_CODE=$ASSIGNMENT_FUNCTION_EXIT_CODE
+                  fi
+                  if [ $PERM_SET_FUNCTION_EXIT_CODE -ne 0 ] && [ $ASSIGNMENT_FUNCTION_EXIT_CODE -ne 0 ]; then
+                  ERROR_MESSAGE="Both functions (auto-permissionsets.py and auto-assignment.py) failed :( Please see function logs above or in CloudWatch for details"
+                  fi
+                  if [ -n "$ERROR_MESSAGE" ]; then
+                  echo "$ERROR_MESSAGE"
+                  else
+                  echo "Both functions (auto-permissionsets.py and auto-assignment.py) ran successfully. Execution is now complete :)"
+                  fi
+                - 'echo "Exiting build with final exit code: $EXIT_CODE"'
+                - exit $EXIT_CODE
+      TimeoutInMinutes: 60
+  ICPermissionSetAssignmentAutomationRole:
     Type: "AWS::IAM::Role"
     Properties:
-      RoleName: ICPermissionSetAutomationLambdaRole
+      RoleName: ICPermissionSetAssignmentAutomationRole
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
           - Effect: Allow
             Principal:
-              Service: lambda.amazonaws.com
+              Service: codebuild.amazonaws.com
             Action:
               - "sts:AssumeRole"
       Path: /
       Policies:
-        - PolicyName: ICPermissionSetAutomationLambdaRolePolicy
+        - PolicyName: ICPermissionSetAutomationPolicy
           PolicyDocument:
             Statement:
               - Sid: SSOPermission
@@ -215,6 +304,7 @@ Resources:
                 Effect: Allow
                 Action:
                   - "s3:GetObject"
+                  - "s3:GetObjectVersion"
                   - "s3:PutObject"
                   - "s3:PutObjectAcl"
                 Resource: !Sub "arn:aws:s3:::${ICMappingBucketName}-${AWS::AccountId}-${AWS::Region}/*"
@@ -223,6 +313,16 @@ Resources:
                 Action:
                   - "s3:ListBucket"
                 Resource: !Sub "arn:aws:s3:::${ICMappingBucketName}-${AWS::AccountId}-${AWS::Region}"
+              - Sid: S3ArtifactsEssentialObjectActions
+                Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                Resource: !Sub "arn:aws:s3:::${ArtifactBucketName}/*"
+              - Sid: S3ArtifactsEssentialBucketAction
+                Effect: Allow
+                Action:
+                  - "s3:ListBucket"
+                Resource: !Sub "arn:aws:s3:::${ArtifactBucketName}"
               - Sid: KMSEssentialActions
                 Effect: Allow
                 Action:
@@ -234,62 +334,7 @@ Resources:
                 Action:
                   - "sns:Publish"
                 Resource: "*"
-
-  #########################################################################
-  # Lambda function(2) that manages IAM Identity Center account assignment #
-  ##########################################################################
-  ICAssignmentAutomationLambda:
-    Type: "AWS::Lambda::Function"
-    Properties:
-      FunctionName: ic-auto-assignment-enabler
-      Handler: auto-assignment.lambda_handler
-      Code:
-        S3Bucket: !Join
-          - "-"
-          - - !Ref ICMappingBucketName
-            - !Sub ${AWS::AccountId}
-            - !Sub ${AWS::Region}
-        S3Key: !Ref AssignmentLambdaZipFileName
-        S3ObjectVersion: !Ref AssignmentLambdaZipFileVersion
-      Runtime: "python3.12"
-      Environment:
-        Variables:
-          IC_InstanceArn: !Ref ICInstanceARN
-          IdentityStore_Id: !Ref IdentityStoreId
-          IC_S3_BucketName: !Join
-            - "-"
-            - - !Ref ICMappingBucketName
-              - !Sub ${AWS::AccountId}
-              - !Sub ${AWS::Region}
-          GlobalFileName: !Ref GlobalICGroupMappingFileName
-          TargetFileName: !Ref TargetICGroupMappingFileName
-          Lambda_Region: !Ref "AWS::Region"
-          Org_Management_Account: !Ref OrgManagementAccount
-          AdminDelegated: !Ref AdminDelegated
-          SkippedPermissionSetsTableName: !If
-            - CTorAdminDelegated
-            - !Ref SkippedPermissionSetsTable
-            - ""
-      MemorySize: 256
-      Timeout: 900
-      Role: !GetAtt
-        - ICAssignmentAutomationLambdaRole
-        - Arn
-  ICAssignmentAutomationLambdaRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      RoleName: ICAssignmentAutomationLambdaRole
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action:
-              - "sts:AssumeRole"
-      Path: /
-      Policies:
-        - PolicyName: ICAssignmentAutomationLambdaPolicy
+        - PolicyName: ICAssignmentAutomationPolicy
           PolicyDocument:
             Statement:
               - Sid: EssentialActions
@@ -314,8 +359,10 @@ Resources:
                   - "logs:DeleteLogDelivery"
                   - "logs:DescribeLogGroups"
                   - "logs:DescribeLogStreams"
+                  - "logs:DeleteLogGroup"
                   - "logs:PutLogEvents"
                   - "organizations:ListAccounts"
+                  - "organizations:ListRoots"
                   - "ssm:GetParameter"
                   - "sso:CreateAccountAssignment"
                   - "sso:DeleteAccountAssignment"
@@ -325,13 +372,26 @@ Resources:
                   - "sso:ListTagsForResource"
                   - "sso:UpdateSSOConfiguration"
                   - "sso:ListAccountsForProvisionedPermissionSet"
+                  - "identitystore:DescribeGroup"
                 Resource: "*"
+              - Sid: OrganizationsActions
+                Effect: Allow
+                Action:
+                  - "organizations:ListAccountsForParent"
+                  - "organizations:DescribeAccount"
+                  - "organizations:ListChildren"
+                  - "organizations:ListOrganizationalUnitsForParent"
+                Resource:
+                  - !Sub "arn:aws:organizations::${AWS::AccountId}:ou/o-*/ou-*"
+                  - !Sub "arn:aws:organizations::${AWS::AccountId}:account/o-*/*"
+                  - !Sub "arn:aws:organizations::${AWS::AccountId}:root/o-*/r-*"
               - Sid: S3EssentialActions
                 Effect: Allow
                 Action:
                   - "s3:GetObject"
                   - "s3:PutObject"
                   - "s3:PutObjectAcl"
+                  - "s3:GetObjectVersion"
                 Resource: !Sub "arn:aws:s3:::${ICMappingBucketName}-${AWS::AccountId}-${AWS::Region}/*"
               - Sid: KMSEssentialActions
                 Effect: Allow
@@ -339,29 +399,130 @@ Resources:
                   - "kms:Encrypt"
                   - "kms:Decrypt"
                 Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*"
-  ##########################################################
-  # AWS Event Rules - Trigger Automation by regular actions #
-  ##########################################################
-  ICCreateEventRuleforOrganization:
+
+  # Dedicated log group for permission set and assignment automation functions (in addition to consolidated CodeBuild Logs)
+  ICPermissionsAutomationLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub ic-permissionsets-enabler-${AWS::AccountId}-${AWS::Region}
+      RetentionInDays: 30
+  ICAssignmentAutomationLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub ic-auto-assignment-enabler-${AWS::AccountId}-${AWS::Region}
+      RetentionInDays: 30
+
+  ################################################################
+  # AWS Event Rules - Trigger Automation by invited account #
+  ################################################################
+  ICCreateEventRuleforOrganizationInviteAccount:
     Type: "AWS::Events::Rule"
     Properties:
-      Description: Trigger the automation lambda function
+      Description: Trigger the automation CodeBuild project when an invited account successfully joins Organization
       EventPattern:
         source:
           - aws.organizations
         detail-type:
-          - AWS API Call via CloudTrail
+          - AWS Service Event via CloudTrail
         detail:
-          eventSource:
-            - organizations.amazonaws.com
           eventName:
-            - CreateAccount
-            - InviteAccountToOrganization
-      Name: TriggerICAutomationEnablerRule
+            - AccountJoinedOrganization
+      Name: TriggerICAutomationJoinedNewAccountEnablerRule
       State: ENABLED
       Targets:
-        - Arn: !GetAtt ICPermissionSetAutomationLambda.Arn
-          Id: TargetFunctionICPermissionSet
+        - Arn: !GetAtt ICAutomationBuildProject.Arn
+          RoleArn: !GetAtt AutoICEventBridgeRole.Arn
+          Id: TargetICAutomationProject
+          InputTransformer:
+            InputTemplate: |
+              {
+                "environmentVariablesOverride": [{
+                    "name": "EVENT_DATA",
+                    "value": "<detail_type>"
+                  },
+                  {
+                    "name": "EVENT_ID",
+                    "value": "<event_id>"
+                  },
+                  {
+                    "name": "EVENT_NAME",
+                    "value": "<event_name>"
+                  },
+                  {
+                    "name": "EVENT_SOURCE",
+                    "value": "<event_source>"
+                  },
+                  {
+                    "name": "EVENT_JOINED_ACCOUNT_ID",
+                    "value": "<account_id>"
+                  }
+                ]
+              }
+            InputPathsMap:
+              detail_type: "$.detail-type"
+              event_id: "$.detail.eventID"
+              event_name: "$.detail.eventName"
+              event_source: "$.source"
+              account_id: "$.detail.additionalEventData.newAccountId"
+  ##########################################################
+  # AWS Event Rules - Trigger Automation by regular actions #
+  ##########################################################
+  ICCreateEventRuleforOrganizationCreateAccount:
+    Type: "AWS::Events::Rule"
+    Properties:
+      Description: Trigger the automation CodeBuild project when new account is successfully created
+      EventPattern:
+        source:
+          - aws.organizations
+        detail-type:
+          - AWS Service Event via CloudTrail
+        detail:
+          eventName:
+            - CreateAccountResult
+          serviceEventDetails:
+            createAccountStatus:
+              state:
+                - SUCCEEDED
+      Name: TriggerICAutomationCreateNewAccountEnablerRule
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt ICAutomationBuildProject.Arn
+          RoleArn: !GetAtt AutoICEventBridgeRole.Arn
+          Id: TargetICAutomationProject
+          InputTransformer:
+            InputTemplate: |
+              {
+                "environmentVariablesOverride": [{
+                    "name": "EVENT_DATA",
+                    "value": "<detail_type>"
+                  },
+                  {
+                    "name": "EVENT_ID",
+                    "value": "<event_id>"
+                  },
+                  {
+                    "name": "EVENT_NAME",
+                    "value": "<event_name>"
+                  },
+                  {
+                    "name": "EVENT_SOURCE",
+                    "value": "<event_source>"
+                  },
+                  {
+                    "name": "EVENT_CREATE_ACCOUNT_ID",
+                    "value": "<account_id>"
+                  }
+                ]
+              }
+            InputPathsMap:
+              detail_type: "$.detail-type"
+              event_id: "$.detail.eventID"
+              event_name: "$.detail.eventName"
+              event_source: "$.source"
+              account_id: "$.detail.serviceEventDetails.createAccountStatus.accountId"
+
 
   ###########################################################################################################
   # AWS Event Rules - Detect manual user interaction with the IAM Identity Center - comment line 258-366 to disable#
@@ -369,7 +530,7 @@ Resources:
   ICManualActionDetectionRule1:
     Type: "AWS::Events::Rule"
     Properties:
-      Description: Trigger the automation lambda function when it detects manual user interaction from eventSource sso.amazonaws.com
+      Description: Trigger the automation CodeBuild project when it detects manual user interaction from eventSource sso.amazonaws.com
       EventPattern:
         source:
           - aws.sso
@@ -408,20 +569,50 @@ Resources:
                         - IsICAutomationAdminArnEmpty
                         - !ImportValue ICAdminRoleArn
                         - !Ref ICAutomationAdminArn
-                      - ICAssignmentAutomationLambdaRole
-                      - ICPermissionSetAutomationLambdaRole
+                      - ICPermissionSetAssignmentAutomationRole
       Name: ICManualActionDetectionRule1
       State: ENABLED
       Targets:
-        - Arn: !GetAtt ICPermissionSetAutomationLambda.Arn
-          Id: TargetFunctionPermissionSetAutomation
-        - Arn: !GetAtt ICAlertSNSNotificationLambda.Arn
-          Id: TargetFunctionSSN
+        - Arn: !GetAtt ICAutomationBuildProject.Arn
+          RoleArn: !GetAtt AutoICEventBridgeRole.Arn
+          Id: TargetICAutomationProject
+          InputTransformer:
+            InputTemplate: |
+              {
+                "environmentVariablesOverride": [
+                  {
+                    "name": "EVENT_DATA",
+                    "value": "<detail_type>"
+                  },
+                  {
+                    "name": "EVENT_ID",
+                    "value": "<event_id>"
+                  },
+                  {
+                    "name": "EVENT_NAME",
+                    "value": "<event_name>"
+                  },
+                  {
+                    "name": "EVENT_SOURCE",
+                    "value": "<event_source>"
+                  },
+                  {
+                    "name": "USER_IDENTITY",
+                    "value": "<user_identity>"
+                  }
+                ]
+              }
+            InputPathsMap:
+              detail_type: "$.detail-type"
+              event_id: "$.detail.eventID"
+              event_name: "$.detail.eventName"
+              event_source: "$.source"
+              user_identity: "$.detail.userIdentity.arn"
 
   ICManualActionDetectionRule2:
     Type: "AWS::Events::Rule"
     Properties:
-      Description: Trigger the automation lambda function when it detects manual user interaction from eventSource sso-directory.amazonaws.com
+      Description: Trigger the automation CodeBuild project when it detects manual user interaction from eventSource sso-directory.amazonaws.com
       EventPattern:
         source:
           - aws.sso-directory
@@ -472,25 +663,93 @@ Resources:
                         - IsICAutomationAdminArnEmpty
                         - !ImportValue ICAdminRoleArn
                         - !Ref ICAutomationAdminArn
-                      - ICAssignmentAutomationLambdaRole
-                      - ICPermissionSetAutomationLambdaRole
+                      - ICPermissionSetAssignmentAutomationRole
       Name: ICManualActionDetectionRule2
       State: ENABLED
       Targets:
-        - Arn: !GetAtt ICPermissionSetAutomationLambda.Arn
-          Id: TargetFunctionPermissionSetAutomation
-        - Arn: !GetAtt ICAlertSNSNotificationLambda.Arn
-          Id: TargetFunctionSSN
+        - Arn: !GetAtt ICAutomationBuildProject.Arn
+          RoleArn: !GetAtt AutoICEventBridgeRole.Arn
+          Id: TargetICAutomationProject
+          InputTransformer:
+            InputTemplate: |
+              {
+                "environmentVariablesOverride": [
+                  {
+                    "name": "EVENT_DATA",
+                    "value": "<detail_type>"
+                  },
+                  {
+                    "name": "EVENT_ID",
+                    "value": "<event_id>"
+                  },
+                  {
+                    "name": "EVENT_NAME",
+                    "value": "<event_name>"
+                  },
+                  {
+                    "name": "EVENT_SOURCE",
+                    "value": "<event_source>"
+                  },
+                  {
+                    "name": "USER_IDENTITY",
+                    "value": "<user_identity>"
+                  }
+                ]
+              }
+            InputPathsMap:
+              detail_type: "$.detail-type"
+              event_id: "$.detail.eventID"
+              event_name: "$.detail.eventName"
+              event_source: "$.source"
+              user_identity: "$.detail.userIdentity.arn"
+        
+  AutoICEventBridgeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AutoICEventBridgeRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "events.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "InvokeCodeBuild"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "codebuild:StartBuild"
+                Resource: !GetAtt ICAutomationBuildProject.Arn
 
   ICScheduledRuleBaselining:
     Type: AWS::Events::Rule
     Properties:
-      Description: Schedule CloudWatch event rule (re-baselining) for the lambda function (every 12 hour by default)
+      Description: Schedule CloudWatch event rule (re-baselining) for the CodeBuild project (every 12 hour by default)
       ScheduleExpression: rate(12 hours)
       State: "ENABLED"
       Targets:
-        - Arn: !GetAtt ICPermissionSetAutomationLambda.Arn
-          Id: "Every12Hours"
+        - Arn: !GetAtt ICAutomationBuildProject.Arn
+          RoleArn: !GetAtt AutoICEventBridgeRole.Arn
+          Id: TargetICAutomationProject
+          InputTransformer:
+            InputTemplate: |
+              {
+                "environmentVariablesOverride": [
+                  {
+                    "name": "EVENT_DATA",
+                    "value": "<detail_type>"
+                  },
+                  {
+                    "name": "EVENT_SOURCE",
+                    "value": "<event_source>"
+                  }
+                ]
+              }
+            InputPathsMap:
+              detail_type: "$.detail-type"
+              event_source: "$.source"
 
   SNSICManualActionAlertTopic:
     Type: AWS::SNS::Topic
@@ -553,7 +812,7 @@ Resources:
               - "sts:AssumeRole"
       Path: /
       Policies:
-        - PolicyName: ICAssignmentAutomationLambdaPolicy
+        - PolicyName: ICAssignmentAutomationPolicy
           PolicyDocument:
             Statement:
               - Sid: EssentialActions
@@ -572,63 +831,3 @@ Resources:
                   - "logs:DescribeLogStreams"
                   - "logs:PutLogEvents"
                 Resource: "*"
-  #  Add Lambda permission to AWS event rules
-  LambdaResourcePermissionForAutoPermissionSetEvent:
-    Type: "AWS::Lambda::Permission"
-    DependsOn: ICAlertSNSNotificationLambda
-    Properties:
-      Action: "lambda:InvokeFunction"
-      FunctionName: !GetAtt ICPermissionSetAutomationLambda.Arn
-      Principal: events.amazonaws.com
-  LambdaResourcePermissionForAutoassignEvent:
-    Type: "AWS::Lambda::Permission"
-    DependsOn: ICAlertSNSNotificationLambda
-    Properties:
-      Action: "lambda:InvokeFunction"
-      FunctionName: !GetAtt ICAssignmentAutomationLambda.Arn
-      Principal: events.amazonaws.com
-  LambdaResourcePermissionForSNSEvent:
-    Type: "AWS::Lambda::Permission"
-    DependsOn: LambdaResourcePermissionForAutoassignEvent
-    Properties:
-      Action: "lambda:InvokeFunction"
-      FunctionName: !GetAtt ICAlertSNSNotificationLambda.Arn
-      Principal: events.amazonaws.com
-
-  ##############################################################################
-  # SNS topic that used by permissionset lambda(1) to invoke auto assign lambda #
-  ##############################################################################
-  SNSInvokeLambdaTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      DisplayName: ic-automation-topic
-      TopicName: ic-automation-topic
-  SNSInvokeLambdaTopicPolicy:
-    Type: AWS::SNS::TopicPolicy
-    Properties:
-      Topics:
-        - !Ref SNSInvokeLambdaTopic
-      PolicyDocument:
-        Statement:
-          - Sid: AWSSNSPolicy
-            Action:
-              - sns:Publish
-            Effect: Allow
-            Resource: !Ref SNSInvokeLambdaTopic
-            Principal:
-              AWS:
-                - !GetAtt ICPermissionSetAutomationLambdaRole.Arn
-  rOrgGetAccountsLambdaSubscription:
-    Type: AWS::SNS::Subscription
-    Properties:
-      Endpoint: !GetAtt ICAssignmentAutomationLambda.Arn
-      Protocol: lambda
-      TopicArn: !Ref SNSInvokeLambdaTopic
-
-  rOrgGetAccountsLambdaPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      Principal: sns.amazonaws.com
-      SourceArn: !Ref SNSInvokeLambdaTopic
-      FunctionName: !GetAtt ICAssignmentAutomationLambda.Arn

@@ -3,26 +3,36 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: >-
   Cloudformation template creating S3 and KMS resources for IAM Identity Center automation
   solution. The s3 bucket stores IAM Identity Center permission sets and
-  assignment mapping files and lambda zip files (qs-1t52at7re).
+  assignment mapping files and source code zip files (qs-1t52at7re).
 Parameters:
   ICMappingBucketName:
     Type: String
     Description: >-
-      The S3 bucket that stores the lambda code as well as permission set and
+      The S3 bucket that stores the source code as well as permission set and
       mapping definition. It's the same name that is used in
       identity-center-automation.template.
   OrganizationId:
     Type: String
     Description: AWS Organizations ID
+  createS3KmsKey:
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+    Default: "true"
+    Description: Parameter to check if user wants to create a new KMS key for S3 bucket encryption or use an existing key
+  S3KmsArn:
+    Type: String
+    Description: Existing KMS key ARN for S3 bucket encryption (required if createS3KmsKey is false)
   ICAutomationAdminArn:
     Type: String
     Description: >-
-      The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user)
+      The Name of IAM Identity Center automation admin IAM role. This IAM role
       will have permissions to manage S3 bucket, besides ICAutoPipelineCodeBuildRole.
   ICKMSAdminArn:
     Type: String
     Description: >-
-      The ARN of IAM role(or user) which will have permissions to manage the IAM Identity Center KMS
+      The Name of IAM role which will have permissions to manage the IAM Identity Center KMS
       key, besides ICAutoPipelineCodeBuildRole.
   createICKMSAdminRole:
     Type: String
@@ -42,6 +52,8 @@ Parameters:
 Conditions:
   CreateICKMSAdminRoleEqualsTrue: !Equals [!Ref createICKMSAdminRole, "true"]
   CreateICAdminRoleEqualsTrue: !Equals [!Ref createICAdminRole, "true"]
+  # CreateS3KmsKey: !Equals [ !Ref S3KmsArn, '']
+  createKmsKeyEqualsTrue: !Equals [!Ref createS3KmsKey, "true"]
 
 Resources:
   ###################################################################################
@@ -50,12 +62,12 @@ Resources:
   ICAdminRole:
     Type: "AWS::IAM::Role"
     Metadata:
-        cfn_nag:
-          rules_to_suppress:
-            - id: F38
-              reason: "Grant this ICAdminRole IAM full/admin permissions."
-            - id: F3
-              reason: "Grant this ICAdminRole SSO full/admin permissions."
+      cfn_nag:
+        rules_to_suppress:
+          - id: F38
+            reason: "Grant this ICAdminRole IAM full/admin permissions."
+          - id: F3
+            reason: "Grant this ICAdminRole SSO full/admin permissions."
     Condition: CreateICAdminRoleEqualsTrue
     Properties:
       AssumeRolePolicyDocument:
@@ -93,10 +105,10 @@ Resources:
   ICKMSAdminRole:
     Type: "AWS::IAM::Role"
     Metadata:
-        cfn_nag:
-          rules_to_suppress:
-            - id: F3
-              reason: "Grant this ICKMSAdminRole full/admin KMS permissions."
+      cfn_nag:
+        rules_to_suppress:
+          - id: F3
+            reason: "Grant this ICKMSAdminRole full/admin KMS permissions."
     Condition: CreateICKMSAdminRoleEqualsTrue
     Properties:
       AssumeRolePolicyDocument:
@@ -117,6 +129,21 @@ Resources:
                 Action:
                   - "kms:*"
                 Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*"
+              - Effect: Allow
+                Action:
+                  - "kms:ListAliases"
+                Resource: "*"
+              - Sid: S3EssentialObjectActions
+                Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                Resource: !Sub "arn:aws:s3:::${ICMappingBucketName}-${AWS::AccountId}-${AWS::Region}/*"
+              - Sid: S3EssentialBucketAction
+                Effect: Allow
+                Action:
+                  - "s3:ListBucket"
+                Resource: !Sub "arn:aws:s3:::${ICMappingBucketName}-${AWS::AccountId}-${AWS::Region}"
+
 
   S3Bucket:
     Type: AWS::S3::Bucket
@@ -127,15 +154,15 @@ Resources:
         Status: Enabled
       BucketEncryption:
         ServerSideEncryptionConfiguration:
-          - BucketKeyEnabled: false
+          - BucketKeyEnabled: true
             ServerSideEncryptionByDefault:
               SSEAlgorithm: "aws:kms"
-              KMSMasterKeyID: !GetAtt S3BucketKMSKey.Arn
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: True
-        BlockPublicPolicy: True
-        IgnorePublicAcls: True
-        RestrictPublicBuckets: True
+              KMSMasterKeyID: !If [ createKmsKeyEqualsTrue, !GetAtt S3BucketKMSKey.Arn, !Ref S3KmsArn ]
+#      PublicAccessBlockConfiguration:
+#        BlockPublicAcls: True
+#        BlockPublicPolicy: True
+#        IgnorePublicAcls: True
+#        RestrictPublicBuckets: True
 
   S3BucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -225,15 +252,16 @@ Resources:
             Condition:
               StringNotLikeIfExists:
                 s3:x-amz-server-side-encryption-aws-kms-key-id:
-                  - !GetAtt S3BucketKMSKey.Arn
+                  - !If [ createKmsKeyEqualsTrue, !GetAtt S3BucketKMSKey.Arn, !Ref S3KmsArn ]
 
   S3BucketKMSKey:
     Type: "AWS::KMS::Key"
+    Condition: createKmsKeyEqualsTrue
     Metadata:
-        cfn_nag:
-          rules_to_suppress:
-            - id: F76
-              reason: "Secure Lambda Permissions with IAM Condition."
+      cfn_nag:
+        rules_to_suppress:
+          - id: F76
+            reason: "Secure CodeBuild Permissions with IAM Condition."
     Properties:
       Description: Identity Center(IC) mapping bucket Server-side encryption KMS Key
       EnableKeyRotation: true
@@ -249,6 +277,7 @@ Resources:
                   - CreateICKMSAdminRoleEqualsTrue
                   - !GetAtt ICKMSAdminRole.Arn
                   - !Ref ICKMSAdminArn
+              
             Action: "kms:*"
             Resource: "*"
           - Sid: Key management Permissions
@@ -276,7 +305,7 @@ Resources:
               - "kms:TagResource"
               - "kms:UntagResource"
             Resource: "*"
-          - Sid: Lambda Permissions
+          - Sid: CodeBuild Permissions
             Effect: Allow
             Principal:
               AWS: "*"
@@ -293,9 +322,8 @@ Resources:
               ForAnyValue:ArnLike:
                 aws:PrincipalARN:
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAutoPipelineCodeBuildRole"
-                  #IAM Role ARN of IAM Identity Center automation Lambda functions
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICPermissionSetAutomationLambdaRole"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAssignmentAutomationLambdaRole"
+                  #IAM Role ARN of IAM Identity Center automation CodeBuild project
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICPermissionSetAssignmentAutomationRole"
           # - Sid: Allow desribe key permission for other monitor roles
           #   Effect: Allow
           #   Principal:
@@ -306,10 +334,10 @@ Resources:
           #     - "kms:Get*"
           #     - "kms:List*"
           #   Resource: "*"
-          - Sid: Allow lambda to using objects from S3
+          - Sid: Allow CodeBuild to use objects from S3
             Effect: Allow
             Principal:
-              Service: lambda.amazonaws.com
+              Service: codebuild.amazonaws.com
             Action:
               - "kms:Decrypt"
               - "kms:DescribeKey"
@@ -320,31 +348,16 @@ Resources:
             Resource: "*"
             Condition:
               StringEquals:
-                "kms:ViaService": !Sub "lambda.${AWS::Region}.amazonaws.com"
-          - Sid: Allow alias creation during setup
-            Effect: Allow
-            Principal:
-              AWS: "*"
-            Action: "kms:CreateAlias"
-            Resource: "*"
-            Condition:
-              StringEquals:
-                "kms:CallerAccount": !Sub "${AWS::AccountId}"
-                "kms:ViaService": !Sub "cloudformation.${AWS::Region}.amazonaws.com"
+                "kms:ViaService": !Sub "codebuild.${AWS::Region}.amazonaws.com"
 
-  S3globalAssetKMSKeyAlias:
-    Type: "AWS::KMS::Alias"
-    Properties:
-      AliasName: "alias/ic-mapping-s3-bucket-key"
-      TargetKeyId: !GetAtt S3BucketKMSKey.Arn
 Outputs:
   ICKMSAdminRole:
     Value:
       Fn::If:
         - CreateICKMSAdminRoleEqualsTrue
         - !GetAtt ICKMSAdminRole.Arn
-        - !Ref ICKMSAdminArn
-    Description: The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user) will have permissions to update IAM Identity Center settings without trigger the SNS notification, besides the ICAssignmentAutomationLambdaRole and ICPermissionSetAutomationLambdaRole.
+        - !Sub "arn:aws:iam::${AWS::AccountId}:role/${ICKMSAdminArn}"
+    Description: The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user) will have permissions to update IAM Identity Center settings without trigger the SNS notification, besides the ICPermissionSetAssignmentAutomationRole.
     Export:
       Name: ICKMSAdminRoleArn
   ICAdminRole:
@@ -353,6 +366,6 @@ Outputs:
         - CreateICAdminRoleEqualsTrue
         - !GetAtt ICAdminRole.Arn
         - !Ref ICAutomationAdminArn
-    Description: The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user) will have permissions to update IAM Identity Center settings without trigger the SNS notification, besides the ICAssignmentAutomationLambdaRole and ICPermissionSetAutomationLambdaRole.
+    Description: The ARN of IAM Identity Center automation admin IAM role or IAM user. This IAM role(or user) will have permissions to update IAM Identity Center settings without trigger the SNS notification, besides the ICPermissionSetAssignmentAutomationRole.
     Export:
       Name: ICAdminRoleArn

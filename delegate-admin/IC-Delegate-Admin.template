@@ -177,7 +177,7 @@ Resources:
       FunctionName: delegate-IC-Admin
       Handler: index.handler
       MemorySize: 1024
-      Runtime: python3.8
+      Runtime: python3.12
       Timeout: 30
   customResourceLambdaInvoke:
     Type: Custom::AWS
