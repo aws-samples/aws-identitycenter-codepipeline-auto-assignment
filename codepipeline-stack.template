@@ -1,28 +1,208 @@
 ---
 AWSTemplateFormatVersion: 2010-09-09
 Description: "This template creates AWS CodePipeline and other CICD resources for Identity Center automation solution (qs-1t52at7re)"
+
+Conditions:
+  IsCodeStarConnectionSource: !Equals [!Ref SourceType, 'CodeStarConnection']
+  IsCodeCommitSource: !Equals [!Ref SourceType, 'CodeCommit']
+  CreateMappingGeneratorProject: !Equals [!Ref GeneratePermissionSetsAndMappings, 'true']
 Parameters:
-  RepositoryName:
-    Description: 'The name of CodeCommit repository that has been created for this solution'
+  GeneratePermissionSetsAndMappings:
     Type: String
-    Default: <Replace-With-Your-Own-Value, Eg my-ic-repo>
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Set to true if you want to deploy the build project to generate permission sets and mapping JSON files, ONLY if you are already using Identity Center and would like to import existing permission sets and assignments into this solution. You must manually run the build project to generate permission sets and mapping files before pushing code to your source code repository. Follow README for more information.
+  ICInstanceARN:
+    Type: String
+    Description: Required when GeneratePermissionSetsAndMappings is set to true. ICInstanceARN can be found on the AWS IAM Identity Center console 'Settings' page.
+  IdentityStoreId:
+    Type: String
+    Description: Required when GeneratePermissionSetsAndMappings is set to true. Identity Store ID can be found on the AWS IAM Identity Center console 'Settings' page.
+  SourceType:
+    Description: Choose the source type for your pipeline (AWS CodeCommit or CodeStarConnection).
+    Type: String
+    Default: CodeStarConnection
+    AllowedValues:
+      - CodeStarConnection
+      - CodeCommit
+  RepositoryName:
+    Description: The name of the repository (full name of repository with path for CodeStarConnection; repository name for AWS CodeCommit).
+    Type: String
+    Default: ic-automation
   RepoBranch:
     Description: The name of branch that will trigger the CodePipeline run.
     Type: String
-    Default: <Replace-With-Your-Own-Value, Eg main>
+    Default: main
+  ConnectionArn:
+    Description: The ARN of the CodeStar connection (required if SourceType is CodeStarConnection).
+    Type: String
+    Default: ''
+  AutomationBuildProjectName:
+    Description: The full name of the automation CodeBuild Project.
+    Type: String
+    Default: ic-automation-build-project
+  SNSPipelineApprovalEmail:
+    Description: The email that will receive and approve pipeline approval notifications.
+    Type: String
   ICMappingBucketName:
     Type: String
     Description: >-
       The same bucket name will be used in the automation and s3 stack. This S3
       bucket stores the permission sets and mapping files. Specify the same name you have specified in identity-center-stacks-parameters.json
-    Default: <Replace-With-Your-Own-Value, Eg ic-s3-automation-sample-bucket>
+    Default: ic-sso-automation
 
 Resources:
+  MappingFilesS3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Condition: CreateMappingGeneratorProject
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub icpermsetmapping-${AWS::AccountId}-${AWS::Region}
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  MappingCodeBuildServiceRole:
+    Type: 'AWS::IAM::Role'
+    Condition: CreateMappingGeneratorProject
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess'
+      Policies:
+        - PolicyName: CodeBuildServiceRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:PutObject'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:DeleteObject'
+                Resource:
+                  - !Sub "arn:aws:s3:::icpermsetmapping-${AWS::AccountId}-${AWS::Region}/*"
+                  - !Sub "arn:aws:s3:::icpermsetmapping-${AWS::AccountId}-${AWS::Region}"
+              - Effect: Allow
+                Action:
+                  - "sso:DescribePermissionSet"
+                  - "sso:DescribePermissionSetProvisioningStatus"
+                  - "sso:DescribePermissionsPolicies"
+                  - "sso:DescribeRegisteredRegions"
+                  - "sso:GetInlinePolicyForPermissionSet"
+                  - "sso:GetPermissionSet"
+                  - "sso:GetPermissionsBoundaryForPermissionSet"
+                  - "sso:GetPermissionsPolicy"
+                  - "sso:ListAccountAssignments"
+                  - "sso:ListAccountsForProvisionedPermissionSet"
+                  - "sso:ListCustomerManagedPolicyReferencesInPermissionSet"
+                  - "sso:ListManagedPoliciesInPermissionSet"
+                  - "sso:ListPermissionSetProvisioningStatus"
+                  - "sso:ListPermissionSets"
+                  - "sso:ListPermissionSetsProvisionedToAccount"
+                  - "sso:ListTagsForResource"
+                  - "sso:DescribePermissionSet"
+                  - "sso:ListAccountAssignments"
+                  - "sso:ListPermissionSets"
+                  - "sso:ListTagsForResource"
+                  - "sso:ListAccountsForProvisionedPermissionSet"
+                  - "identitystore:DescribeGroup"
+                  - "organizations:ListAccounts"
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: '*'
+  GenerateMappingCodeBuildProject:
+    Type: 'AWS::CodeBuild::Project'
+    Condition: CreateMappingGeneratorProject
+    Properties:
+      Name: 'IC-GeneratePermissionSetsAndMappingFiles'
+      Description: 'CodeBuild project to generate Identity Center permission set mapping files'
+      ServiceRole: !GetAtt MappingCodeBuildServiceRole.Arn
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        EnvironmentVariables:
+          - Name: IDENTITY_STORE_ID
+            Type: PLAINTEXT
+            Value: !Ref IdentityStoreId
+          - Name: IC_INSTANCE_ARN
+            Type: PLAINTEXT
+            Value: !Ref ICInstanceARN
+          - Name: S3_BUCKET_NAME
+            Type: PLAINTEXT
+            Value: !Sub ICPermSetMapping-${AWS::AccountId}-${AWS::Region}
+          - Name: AWS_REGION
+            Type: PLAINTEXT
+            Value: !Sub ${AWS::Region}
+          
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: !Sub |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - export DEBIAN_FRONTEND=noninteractive
+                - apt update
+                - apt-get install python3-pip -y -q
+                - apt-get install jq git -y -q
+                - pip3 install boto3 --quiet
+                - aws s3 cp s3://icpermsetmapping-${AWS::AccountId}-${AWS::Region}/auto-generate-permissionsets-mapping-files.py .
+            build:
+              commands:
+                - echo "Running permission set and mapping files generator"
+                - python3 auto-generate-permissionsets-mapping-files.py
+                - echo "Syncing generated mapping files to S3"
+                - aws s3 sync identity-center-mapping-info/ s3://icpermsetmapping-${AWS::AccountId}-${AWS::Region}/identity-center-mapping-info/ --delete
+                - aws s3api list-objects-v2 --bucket icpermsetmapping-${AWS::AccountId}-${AWS::Region}
+                - echo "Generation and sync complete"
+          artifacts:
+            files:
+              - '**/*'
+      TimeoutInMinutes: 60
+  ValidationProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: IC-Syntax-Validation
+      Description: Validates syntax of permission sets and mapping files
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: src/codebuild/buildspec-validation.yml
+        Location: !If 
+          - IsCodeCommitSource
+          - !Sub https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${RepositoryName}
+          - !Ref AWS::NoValue
+      SourceVersion: !Sub 'refs/heads/${RepoBranch}'
+      TimeoutInMinutes: 10
   PipelineArtifactStoreBucket:
     Type: 'AWS::S3::Bucket'
     DeletionPolicy: Delete
     Properties:
-      BucketName: !Sub 'ic-pipeline-artifact-bucket-${AWS::AccountId}'
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -77,56 +257,37 @@ Resources:
                 'aws:PrincipalArn':
                   - !GetAtt CodePipelineServiceRole.Arn
                   - !GetAtt CodeBuildRole.Arn
-  PipelineSourceEventRole:
-    Type: AWS::IAM::Role
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICPermissionSetAssignmentAutomationRole"
+  SNSPipelineApprovalTopic:
+    Type: AWS::SNS::Topic
     Properties:
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
+      DisplayName: IC-Pipeline-Approval-Topic
+      TopicName: IC-Pipeline-Approval-Topic
+      KmsMasterKeyId: alias/aws/sns
+      Subscription:
+        - Endpoint: !Ref SNSPipelineApprovalEmail
+          Protocol: email
+
+  SNSPipelineApprovalTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref SNSPipelineApprovalTopic
+      PolicyDocument:
         Statement:
-          -
+          - Sid: AWSSNSPolicy
+            Action:
+              - sns:Publish
             Effect: Allow
+            Resource: !Ref SNSPipelineApprovalTopic
             Principal:
-              Service:
-                - events.amazonaws.com
-            Action: sts:AssumeRole
-      Path: /
-      Policies:
-        -
-          PolicyName: Identity-Center-Automation-pipeline-execution
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              -
-                Effect: Allow
-                Action: codepipeline:StartPipelineExecution
-                Resource: !Join [ '', [ 'arn:aws:codepipeline:', !Ref 'AWS::Region', ':', !Ref 'AWS::AccountId', ':', !Ref AWSCodePipeline ] ]
-  PipelineSourceEventRule:
-    Type: AWS::Events::Rule
-    Properties:
-      EventPattern:
-        source:
-          - aws.codecommit
-        detail-type:
-          - 'CodeCommit Repository State Change'
-        resources:
-          - !Join [ '', [ 'arn:aws:codecommit:', !Ref 'AWS::Region', ':', !Ref 'AWS::AccountId', ':', !Ref RepositoryName ] ]
-        detail:
-          event:
-            - referenceCreated
-            - referenceUpdated
-          referenceType:
-            - branch
-          referenceName:
-            - !Ref RepoBranch
-      Targets:
-        -
-          Arn: 
-            !Join [ '', [ 'arn:aws:codepipeline:', !Ref 'AWS::Region', ':', !Ref 'AWS::AccountId', ':', !Ref AWSCodePipeline ] ]
-          RoleArn: !GetAtt PipelineSourceEventRole.Arn
-          Id: Identity-Center-Automation-Pipeline
+              AWS:
+                - !GetAtt CodePipelineServiceRole.Arn
+
   AWSCodePipeline:
     Type: 'AWS::CodePipeline::Pipeline'
     Properties:
+      PipelineType: V2
       ArtifactStore:
         Location: !Ref PipelineArtifactStoreBucket
         Type: S3
@@ -135,19 +296,36 @@ Resources:
       Stages:
         - Name: Source
           Actions:
-            - Name: CodeCommitUpdate
-              ActionTypeId:
-                Category: Source
-                Owner: AWS
-                Version: '1'
-                Provider: CodeCommit
-              Configuration:
-                RepositoryName: !Ref RepositoryName
-                BranchName: !Ref RepoBranch
-                PollForSourceChanges: false
-              OutputArtifacts:
-                - Name: SourceArtifacts
-              RunOrder: 1
+            - !If
+              - IsCodeStarConnectionSource
+              - Name: CodeStarSourceConnection
+                ActionTypeId:
+                  Category: Source
+                  Owner: AWS
+                  Version: '1'
+                  Provider: CodeStarSourceConnection
+                Configuration:
+                  ConnectionArn: !Ref ConnectionArn
+                  FullRepositoryId: !Ref RepositoryName
+                  BranchName: !Ref RepoBranch
+                OutputArtifacts:
+                  - Name: SourceArtifacts
+                Namespace: SourceVariables
+                RunOrder: 1
+              - Name: CodeCommitSource
+                ActionTypeId:
+                  Category: Source
+                  Owner: AWS
+                  Version: '1'
+                  Provider: CodeCommit
+                Configuration:
+                  RepositoryName: !Ref RepositoryName
+                  BranchName: !Ref RepoBranch
+                  PollForSourceChanges: false
+                OutputArtifacts:
+                  - Name: SourceArtifacts
+                Namespace: SourceVariables
+                RunOrder: 1
         - Name: ValidateAndPackage
           Actions:
             - Name: ParseandScan
@@ -163,6 +341,17 @@ Resources:
               RunOrder: 1
               OutputArtifacts:
                 - Name: UpdatedSourceArtifacts
+            - Name: MappingFilesSyntaxValidation
+              InputArtifacts:
+                - Name: SourceArtifacts
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: '1'
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref ValidationProject
+              RunOrder: 1
             - Name: BuildS3Stack
               ActionTypeId:
                 Category: Deploy
@@ -179,7 +368,7 @@ Resources:
               InputArtifacts:
                 - Name: UpdatedSourceArtifacts
               RunOrder: 2
-            - Name: CreateLambdaZipCode
+            - Name: CreateSourceZipCode
               InputArtifacts:
                 - Name: UpdatedSourceArtifacts
               ActionTypeId:
@@ -206,6 +395,7 @@ Resources:
                 ActionMode: CREATE_UPDATE
                 StackName: IdentityCenter-Automation-Stack
                 Capabilities: 'CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND'
+                ParameterOverrides: !Sub '{"AutomationBuildProjectName": "${AutomationBuildProjectName}"}'
                 TemplateConfiguration: UpdatedSourceArtifactsWithObjectVersion::ic-automation-parameters.json
                 TemplatePath: UpdatedSourceArtifactsWithObjectVersion::identity-center-automation.template
                 RoleArn: !GetAtt CodeBuildRole.Arn
@@ -230,22 +420,43 @@ Resources:
                 Version: '1'
                 Provider: Manual
               Configuration:
-                CustomData: Please check the S3 Objects before triggering the deployment
+                NotificationArn: !Ref SNSPipelineApprovalTopic
+                CustomData: !If 
+                  - IsCodeStarConnectionSource
+                  - "Author #{SourceVariables.AuthorId} made Commit #{SourceVariables.CommitId}. Message: #{SourceVariables.CommitMessage}."
+                  - "Author made Commit #{SourceVariables.CommitId}. Message: #{SourceVariables.CommitMessage}."
+                # CustomData: "Author #{SourceVariables.AuthorId} made Commit #{SourceVariables.CommitId}.\n\nMessage: #{SourceVariables.CommitMessage}."
+                # ExternalEntityLink: !Sub "https://github.com/${RepositoryName}/pull/#{Source.BranchName}"
               RunOrder: 1
-            - Name: TriggerLambdaAutomation
+            - Name: TriggerCodeBuildAutomation
+              InputArtifacts:
+                   - Name: UpdatedSourceArtifacts
               ActionTypeId:
-                Category: Invoke
+                Category: Build
                 Owner: AWS
-                Provider: Lambda
+                Provider: CodeBuild
                 Version: '1'
               Configuration:
-                FunctionName: "ic-permissionsets-enabler"
+                ProjectName: !Ref AutomationBuildProjectName
+                EnvironmentVariables: |
+                  [
+                    {
+                      "name": "CODEPIPELINE_EXECUTION_ID",
+                      "value": "#{codepipeline.PipelineExecutionId}",
+                      "type": "PLAINTEXT"
+                    },
+                    {
+                      "name": "COMMIT_ID",
+                      "value": "#{SourceVariables.CommitId}",
+                      "type": "PLAINTEXT"
+                    }
+                  ]
               RunOrder: 2
 
   CodePipelineServiceRole:
     Type: 'AWS::IAM::Role'
     Properties:
-      RoleName: ICSamplePipelineRole
+      RoleName: !Sub ICPipelineRole-${AWS::AccountId}
       AssumeRolePolicyDocument:
         Statement:
           - Action:
@@ -257,10 +468,19 @@ Resources:
         Version: 2012-10-17
       Path: /
       Policies:
-        - PolicyName: Pipeline-Service-Policy-Example
+        - PolicyName: Pipeline-Service-Policy
           PolicyDocument:
             Version: 2012-10-17
             Statement:
+              - !If
+                - IsCodeStarConnectionSource
+                - Action: 'codestar-connections:UseConnection'
+                  Effect: 'Allow'
+                  Resource: !Ref ConnectionArn
+                - !Ref AWS::NoValue
+              - Action: 'sns:Publish'
+                Effect: 'Allow'
+                Resource: !Ref SNSPipelineApprovalTopic
               - Effect: Allow
                 Action:
                   - 'codecommit:CancelUploadArchive'
@@ -315,33 +535,38 @@ Resources:
     Properties:
       Name: ParseandScan
       Description: Use input json file to create the CFN parameter files for both CFN stack.
-      EncryptionKey: alias/aws/s3
+      # EncryptionKey: alias/aws/s3
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Artifacts:
         Type: CODEPIPELINE
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
-        Image: 'aws/codebuild/standard:6.0'
+        Image: 'aws/codebuild/standard:7.0'
       Source:
+        # Type: !If [IsCodeCommitSource, 'CODECOMMIT', 'CODEPIPELINE']
         Type: CODEPIPELINE
         BuildSpec: src/codebuild/buildspec-param.yml
+        Location: !If 
+          - IsCodeCommitSource
+          - !Sub https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${RepositoryName}
+          - !Ref AWS::NoValue
       SourceVersion: !Sub 'refs/heads/${RepoBranch}'
       TimeoutInMinutes: 10
 
   CodeBuildProjectS3Upload:
     Type: 'AWS::CodeBuild::Project'
     Properties:
-      Name: BuildandUploadLambdaFiles
-      Description: Compress Lambda python scripts and sync the zip files to Identity Center secure S3 bucket.
-      EncryptionKey: alias/aws/s3
+      Name: BuildandUploadICAutomationSourceCodeFiles
+      Description: Compress automation python scripts and sync the zip files to Identity Center secure S3 bucket.
+      # EncryptionKey: alias/aws/s3
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Artifacts:
-        Type: NO_ARTIFACTS
+        Type: CODEPIPELINE
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
-        Image: 'aws/codebuild/standard:6.0'
+        Image: 'aws/codebuild/standard:7.0'
         EnvironmentVariables:
           - Name: S3_BUCKET_NAME
             Type: PLAINTEXT
@@ -351,9 +576,8 @@ Resources:
                 - !Sub ${AWS::AccountId}
                 - !Sub ${AWS::Region}
       Source:
-        Type: CODECOMMIT
-        Location: !Sub >-
-          https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${RepositoryName}
+        Type: CODEPIPELINE
+        
         BuildSpec: src/codebuild/buildspec-zipfiles.yml
       SourceVersion: !Sub 'refs/heads/${RepoBranch}'
       TimeoutInMinutes: 10
@@ -363,16 +587,16 @@ Resources:
     Properties:
       Name: UploadMappingFilestoS3
       Description: >-
-        The Lambda functions are ready. This will sync the latest Identity Center mapping
-        defination files to s3.
-      EncryptionKey: alias/aws/s3
+        The mapping files are ready for build. This will sync the latest Identity Center mapping
+        definition files to s3.
+      # EncryptionKey: alias/aws/s3
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Artifacts:
-        Type: NO_ARTIFACTS
+        Type: CODEPIPELINE
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
-        Image: 'aws/codebuild/standard:6.0'
+        Image: 'aws/codebuild/standard:7.0'
         EnvironmentVariables:
           - Name: S3_BUCKET_NAME
             Type: PLAINTEXT
@@ -382,11 +606,13 @@ Resources:
                 - !Sub ${AWS::AccountId}
                 - !Sub ${AWS::Region}
       Source:
-        Type: CODECOMMIT
-        Location: !Sub >-
-          https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${RepositoryName}
+        # Type: !If [IsCodeCommitSource, 'CODECOMMIT', 'CODEPIPELINE']
+        Type: CODEPIPELINE
         BuildSpec: src/codebuild/buildspec-mapping.yml
-      SourceVersion: !Sub 'refs/heads/${RepoBranch}'
+        Location: !If 
+          - IsCodeCommitSource
+          - !Sub https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${RepositoryName}
+          - !Ref AWS::NoValue
       TimeoutInMinutes: 10
 
   CodeBuildRole:
@@ -410,6 +636,16 @@ Resources:
           PolicyDocument:
             Version: 2012-10-17
             Statement:
+              - !If 
+                - IsCodeCommitSource
+                - Effect: Allow
+                  Action:
+                    - codecommit:GitPull
+                    - codecommit:GetBranch
+                    - codecommit:GetCommit
+                    - codecommit:GetRepository
+                  Resource: !Sub arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${RepositoryName}
+                - !Ref AWS::NoValue
               # - Effect: Allow
               #   Action:
               #     - 'cloudwatch:*'
@@ -432,9 +668,7 @@ Resources:
                 Resource: '*'
               - Effect: Allow
                 Action:
-                  - 'logs:CreateLogGroup'
-                  - 'logs:CreateLogStream'
-                  - 'logs:PutLogEvents'
+                  - 'logs:*'
                 Resource: '*'
               - Effect: Allow
                 Action:
@@ -464,19 +698,28 @@ Resources:
                   - 'lambda:GetFunction'
                   - 'lambda:RemovePermission'
                   - 'lambda:UpdateFunction*'
+                  - 'codebuild:CreateProject'
+                  - 'codebuild:DeleteProject'
+                  - 'codebuild:UpdateProject'
+                  - 'codebuild:StartBuild'
+                  - 'codebuild:ListProjects'
+                  - 'codebuild:ListBuilds'
+                  - 'codebuild:ListBuildsForProject'
+                  - 'codebuild:BatchGetBuilds'
+                  - 'codebuild:BatchGetProjects'
                 Resource: '*'
               - Effect: Allow
                 Action:
                   - 'iam:PassRole'
                 Resource:
                   # Role Names are defined in 'identity-center-automation.template'
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICPermissionSetAutomationLambdaRole"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICPermissionSetAssignmentAutomationRole"
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAlertSNSNotificationRole"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ICAssignmentAutomationLambdaRole"
-                Condition:
-                  StringEquals:
-                    iam:PassedToService:
-                      - lambda.amazonaws.com
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/AutoICEventBridgeRole"
+                #Condition:
+                #  StringEquals:
+                #    iam:PassedToService:
+                #      - codebuild.amazonaws.com
               - Effect: Allow
                 Action:
                   - 's3:CreateBucket'
@@ -507,3 +750,24 @@ Resources:
                   - 'sns:Unsubscribe'
                   - 'sns:ListSubscriptionsByTopic'
                 Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: '*'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F3
+            reason: "Wildcard just for the log group permissions"
+Outputs:
+  MappingFilesS3BucketName:
+    Condition: CreateMappingGeneratorProject
+    Description: Name of the S3 bucket storing Identity Center mapping files
+    Value: !Ref MappingFilesS3Bucket
+  CodeBuildProjectName:
+    Condition: CreateMappingGeneratorProject
+    Description: Name of the CodeBuild project for generating mapping files
+    Value: !Ref GenerateMappingCodeBuildProject
+    

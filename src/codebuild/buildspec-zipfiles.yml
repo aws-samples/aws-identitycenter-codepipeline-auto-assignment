@@ -11,18 +11,18 @@ phases:
       - echo "Sync lambda code to S3 bucket"
       - pwd
       - ls -lah
-      #Build Lambda Zip file with no folder structure
-      - zip -j identity-center-auto-assign.zip src/lambda-code/identity-center-auto-assign/*.py
-      - zip -j identity-center-auto-permissionsets.zip src/lambda-code/identity-center-auto-permissionsets/*.py
+      #Build source code Zip file with no folder structure
+      - zip -j identity-center-auto-assign.zip src/automation-code/identity-center-auto-assign/*.py
+      - zip -j identity-center-auto-permissionsets.zip src/automation-code/identity-center-auto-permissionsets/*.py
       - ls -lah
-      #Upload lambda zip code using aws sync. The bucket name is defined in identity-center-s3-bucket.template
+      #Upload automation source zip code using aws sync. The bucket name is defined in identity-center-s3-bucket.template
       - aws s3 sync .  s3://$S3_BUCKET_NAME/  --exclude "*" --include "identity-center-auto-assign.zip"
       - aws s3 sync .  s3://$S3_BUCKET_NAME/  --exclude "*" --include "identity-center-auto-permissionsets.zip"
       - aws s3api list-objects-v2 --bucket $S3_BUCKET_NAME
       - IC_AUTO_ASSIGN_VERSION_ID=$(aws s3api put-object-tagging --bucket $S3_BUCKET_NAME --key identity-center-auto-assign.zip --tagging 'TagSet=[{Key=version,Value=latest}]' --output text)
       - IC_AUTO_PERMISSIONS_VERSION_ID=$(aws s3api put-object-tagging --bucket $S3_BUCKET_NAME --key identity-center-auto-permissionsets.zip --tagging 'TagSet=[{Key=version,Value=latest}]' --output text)
-      - jq --arg AssignmentLambdaZipFileVersion "$IC_AUTO_ASSIGN_VERSION_ID" '.Parameters.AssignmentLambdaZipFileVersion = $AssignmentLambdaZipFileVersion' ic-automation-parameters.json > temp.json && mv temp.json ic-automation-parameters.json
-      - jq --arg PermissionSetsLambdaZipFileVersion "$IC_AUTO_PERMISSIONS_VERSION_ID" '.Parameters.PermissionSetsLambdaZipFileVersion = $PermissionSetsLambdaZipFileVersion' ic-automation-parameters.json > temp.json && mv temp.json ic-automation-parameters.json
+      - jq --arg AssignmentAutomationZipFileVersion "$IC_AUTO_ASSIGN_VERSION_ID" '.Parameters.AssignmentAutomationZipFileVersion = $AssignmentAutomationZipFileVersion' ic-automation-parameters.json > temp.json && mv temp.json ic-automation-parameters.json
+      - jq --arg PermissionSetsAutomationZipFileVersion "$IC_AUTO_PERMISSIONS_VERSION_ID" '.Parameters.PermissionSetsAutomationZipFileVersion = $PermissionSetsAutomationZipFileVersion' ic-automation-parameters.json > temp.json && mv temp.json ic-automation-parameters.json
       - cat ic-automation-parameters.json
 
 artifacts:
