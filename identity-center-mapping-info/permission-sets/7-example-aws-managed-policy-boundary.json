@@ -1,0 +1,22 @@
+{
+    "Name": "7-example-aws-managed-policy-boundary",
+    "Description": "Example permission set with AWS managed boundary policy",
+    "Session_Duration": "PT12H",
+    "Tags": [
+        {
+            "Key": "identity-center-solution",
+            "Value": "test"
+        }
+    ],
+    "ManagedPolicies": [
+        {
+            "Name": "ViewOnlyAccess",
+            "Arn": "arn:aws:iam::aws:policy/job-function/ViewOnlyAccess"
+        }
+    ],
+    "InlinePolicies": [],
+    "PermissionsBoundary": {
+        "Name": "PowerUserAccess",
+        "Arn": "arn:aws:iam::aws:policy/PowerUserAccess"
+    }
+}

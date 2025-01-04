@@ -68,19 +68,19 @@ def log_and_append_error(message):
 
 def get_valid_group_id(group_name):
     try:
+        logger.info(f"Getting group ID for group name: {group_name}")
         group_id = get_groupid(group_name)
-        if not group_id:
-            raise identitystore_client.exceptions.ResourceNotFoundException(
-                f'"{group_name}" not found in Identity Center.'
-            )
         return group_id
     except identitystore_client.exceptions.ResourceNotFoundException as error:
         log_and_append_error(f'"{group_name}" not found in Identity Center: {error}')
         return None
 
 def get_permission_set_arn(permission_set_name, current_aws_permission_sets):
+    logger.info(f"Looking up permission set ARN for: {permission_set_name}")
     try:
-        return current_aws_permission_sets[permission_set_name]['Arn']
+        arn = current_aws_permission_sets[permission_set_name]['Arn']
+        logger.info(f"Found ARN for permission set {permission_set_name}: {arn}")
+        return arn
     except KeyError as error:
         # Check if permission set exists in skipped permission set list
         skipped = False
@@ -98,6 +98,7 @@ def get_permission_set_arn(permission_set_name, current_aws_permission_sets):
     
 def get_account_id_by_name(account_name):
     """Get AWS account ID from account name"""
+    logger.info(f"Looking up account ID for account name: {account_name}")
     try:
         paginator = orgs_client.get_paginator('list_accounts')
         for page in paginator.paginate():
@@ -241,7 +242,7 @@ def list_all_current_account_assignment(acct_list, current_aws_permission_sets):
             sleep(3)
         except Exception as error:
             error_message = f'Exception listing current account assignments: {error}'
-            logger.error(error_message)
+            # logger.error(error_message)
             log_and_append_error(error_message)
     logger.debug("Current GROUP assignments: %s", all_assignments)
     return all_assignments
@@ -249,6 +250,7 @@ def list_all_current_account_assignment(acct_list, current_aws_permission_sets):
 def drift_detect_update(all_assignments, global_file_contents,
                         target_file_contents, current_aws_permission_sets):
     """Use new mapping information to update IAM Identity Center assignments"""
+    logger.info('Starting assignment drift detection')
     check_list = all_assignments
     # print("check_list:", check_list)
     remove_list = []
@@ -272,7 +274,7 @@ def drift_detect_update(all_assignments, global_file_contents,
             sleep(3)
         except Exception as error:
             error_message = f"Exception while detecting drift: {error}"
-            logger.error(error_message)
+            # logger.error(error_message)
             log_and_append_error(error_message)
     for each_assignment in check_list:
         try:
@@ -310,7 +312,7 @@ def drift_detect_update(all_assignments, global_file_contents,
             sleep(3)
         except Exception as error:
             error_message = f"Exception while detecting drift: {error}"
-            logger.error(error_message)
+            # logger.error(error_message)
             log_and_append_error(error_message)
     for item in remove_list:
         try:
@@ -356,7 +358,7 @@ def drift_detect_update(all_assignments, global_file_contents,
                 sleep(3)
             except Exception as error:
                 error_message = f"Exception while deleting account from drift: {error}"
-                logger.error(error_message)
+                # logger.error(error_message)
                 log_and_append_error(error_message)
 
 def get_global_mapping_contents(bucketname, global_mapping_file):
@@ -373,7 +375,7 @@ def get_global_mapping_contents(bucketname, global_mapping_file):
     except Exception as error:
         error_message = f"Cannot get global mapping information. \
             Did you upload the global mapping file in correct JSON format? {error}"
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         # Exit to prevent from accidently wiping out all the attachment
         if errors:
@@ -397,7 +399,7 @@ def get_target_mapping_contents(bucketname, target_mapping_file):
     except Exception as error:
         error_message = f"Cannot get target mapping information.\
             Did you upload the target mapping file in correct JSON format? {error}"
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         if errors:
             error_message = f'Errors encountered during processing: {errors}'
@@ -460,6 +462,7 @@ def validate_mapping_file_structure(permission_set_file, group_type):
 def global_group_array_mapping(acct_list, global_file_contents,
                                current_aws_permission_sets):
     """Create global group mapping assignments"""
+    logger.info('Starting global mapping assignments')
     group_type = 'global'
 
     for acct in acct_list:
@@ -471,7 +474,7 @@ def global_group_array_mapping(acct_list, global_file_contents,
         validate_mapping_file_structure(global_file_contents, group_type)
     except (ValueError, TypeError) as e:
         error_message = f"Validation error in global file contents: {e}"
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         return
     
@@ -520,7 +523,7 @@ def global_group_array_mapping(acct_list, global_file_contents,
                             sleep(3)
                         except ClientError as error:
                             error_message = f"Create global account assignment failed: {error}"
-                            logger.error(error_message)
+                            # logger.error(error_message)
                             log_and_append_error(error_message)
                     else:
                         logger.warning("Incorrect TargetAccount value at index %d: %s. Skipping this assignment.", index, mapping)
@@ -529,13 +532,14 @@ def global_group_array_mapping(acct_list, global_file_contents,
             "No global mapping information is loaded in existing files.")
     if errors:
         error_message = f'Errors encountered during processing: {errors}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
 
 def target_group_array_mapping(acct_list, target_file_contents,
                                current_aws_permission_sets):
     """Create target group mapping assignments"""
     # target_accounts = [acct for acct in acct_list if acct['Id'] != management_account_id]
+    logger.info('Starting target mapping assignments')
 
     for acct in acct_list:
         if acct['Status'] in ["SUSPENDED", "PENDING_CLOSURE"]:
@@ -555,7 +559,7 @@ def target_group_array_mapping(acct_list, target_file_contents,
         validate_mapping_file_structure(target_file_contents, group_type)
     except (ValueError, TypeError) as e:
         error_message = f"Validation error in target file contents: {e}"
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         return
     
@@ -635,7 +639,7 @@ def target_group_array_mapping(acct_list, target_file_contents,
             sleep(3)
         except ClientError as error:
             error_message = f"Create target account assignment failed: {error}"
-            logger.error(error_message)
+            # logger.error(error_message)
             log_and_append_error(error_message)
             if errors:
                 error_message = f'Errors encountered during processing: {errors}'
@@ -701,7 +705,7 @@ def get_all_permission_sets():
         sleep(3)
     except ClientError as error:
         error_message = f"List permission sets failed: {error}"
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
 
     return permission_set_name_and_arn
@@ -737,7 +741,7 @@ def get_all_permission_sets_if_delegate():
                 )
             except ic_admin.exceptions.ResourceNotFoundException as error:
                 error_message = f'Permission set {perm_set_name} not found: {error}'
-                logger.error(error_message)
+                # logger.error(error_message)
                 log_and_append_error(error_message)
                 continue
             sleep(0.1)  # Aviod hitting API limit.
@@ -773,7 +777,7 @@ def get_all_permission_sets_if_delegate():
         sleep(3)
     except ClientError as error:
         error_message = f"List permission sets failed: {error}"
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
     logger.info(f"Skipped Permission Set Name and ARN: {skipped_perm_set}")
     return permission_set_name_and_arn
@@ -793,7 +797,7 @@ def get_groupid(group_display_name):
         )
         if response['GroupId'] == []:
             error_message = f'Group "{group_display_name}" does not exist.'
-            logger.error(error_message)
+            # logger.error(error_message)
             log_and_append_error(error_message)
             group_id = None
         else:
@@ -803,12 +807,12 @@ def get_groupid(group_display_name):
         sleep(5)
     except ClientError as error:
         error_message = f'ClientError while getting group ids: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         raise
     except identitystore_client.exceptions.ResourceNotFoundException as error:
         error_message = f'Group "{group_display_name}" not found in Identity Center: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         raise
     return group_id
@@ -822,7 +826,7 @@ def get_group_name_from_id(group_id):
         )
         if response['GroupId'] == []:
             error_message = f'Group "{group_id}" does not exist.'
-            logger.error(error_message)
+            # logger.error(error_message)
             log_and_append_error(error_message)
             group_name = None
         else:
@@ -832,12 +836,12 @@ def get_group_name_from_id(group_id):
         sleep(5)
     except ClientError as error:
         error_message = f'ClientError while getting group name: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         raise
     except identitystore_client.exceptions.ResourceNotFoundException as error:
         error_message = f'Group "{group_id}" not found in Identity Center: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         raise
     return group_name
@@ -851,7 +855,7 @@ def get_perm_set_name_from_arn(perm_set_arn):
                     )
         if response['PermissionSet']['PermissionSetArn'] == '':
             error_message = f'Permission Set "{perm_set_arn}" does not exist.'
-            logger.error(error_message)
+            # logger.error(error_message)
             log_and_append_error(error_message)
             perm_set_name = None
         else:
@@ -861,12 +865,12 @@ def get_perm_set_name_from_arn(perm_set_arn):
         sleep(5)
     except ClientError as error:
         error_message = f'ClientError while getting permission set name: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         raise
     except identitystore_client.exceptions.ResourceNotFoundException as error:
         error_message = f'Permission Set "{perm_set_arn}" not found in Identity Center: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         raise
     return perm_set_name
@@ -884,7 +888,7 @@ def get_org_accounts():
             org_accts += response['Accounts']
     except ClientError as error:
         error_message = f'ClientError while listing account Ids in organization: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         org_accts = None
     logger.debug(f"Retrieved Organization account IDs: {org_accts}")
@@ -903,7 +907,7 @@ def get_org_accounts_if_delegate():
             org_accts += response['Accounts']
     except ClientError as error:
         error_message = f'ClientError during delegated listing accounts: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         org_accts = None
 
@@ -992,7 +996,7 @@ def main(event=None):
             logger.debug("INFO: Admin NOT delegated. Running in Management account.")
         if not current_aws_permission_sets:
             error_message = "Cannot load existing Permission Sets from AWS IAM Identity Center!"
-            logger.error(error_message)
+            # logger.error(error_message)
             log_and_append_error(error_message)
             if errors:
                 error_message = f'Errors encountered during processing: {errors}'
@@ -1019,7 +1023,7 @@ def main(event=None):
 
     except Exception as error:
         error_message = f'Exception caught: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         if errors:
             logger.error(f'Errors during execution: {errors}')

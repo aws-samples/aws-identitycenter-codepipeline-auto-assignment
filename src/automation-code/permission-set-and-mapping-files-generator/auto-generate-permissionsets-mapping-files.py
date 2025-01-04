@@ -31,6 +31,7 @@ identity_store_id = os.getenv('IDENTITY_STORE_ID')
 
 def get_permission_set_details(perm_set_arn):
     """Get detailed information about a permission set including policies and tags"""
+    logger.info(f"Getting details for permission set: {perm_set_arn}")
     try:
         describe_perm_set = ic_admin.describe_permission_set(
             InstanceArn=ic_instance_arn,
@@ -127,6 +128,7 @@ def get_group_name(group_id, identitystore_client, identity_store_id, group_disp
 
 def get_account_assignments():
     """Get all account assignments and organize them into global and target mappings"""
+    logger.info("Getting all account assignments")
     global_mapping = []
     target_mapping = []
     group_display_names = {}
@@ -294,11 +296,13 @@ def get_account_assignments():
 
 def create_directory_if_not_exists(path):
     """Create directory if it doesn't exist"""
+    logger.info(f"Checking if directory exists: {path}")
     if not os.path.exists(path):
         os.makedirs(path)
 
 def write_json_file(data, filepath):
     """Write data to a JSON file with proper formatting"""
+    logger.info(f"Writing JSON file: {filepath}")
     with open(filepath, 'w') as f:
         json.dump(data, f, indent=4)
 
@@ -313,6 +317,7 @@ def main():
             InstanceArn=ic_instance_arn,
             MaxResults=100
         )
+        sleep(0.1)
         all_perm_sets = perm_sets_response['PermissionSets']
         
         while 'NextToken' in perm_sets_response:
@@ -322,6 +327,7 @@ def main():
                 MaxResults=100
             )
             all_perm_sets.extend(perm_sets_response['PermissionSets'])
+            sleep(0.1)
         
         for perm_set_arn in all_perm_sets:
             perm_set_json = get_permission_set_details(perm_set_arn)

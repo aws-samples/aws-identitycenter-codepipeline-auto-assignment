@@ -85,7 +85,9 @@ else:
 
 def sync_table_for_skipped_perm_sets(skipped_perm_set):
     """Sync DynamoDB table with the list of skipped permission sets if Admin is delegated"""
+    logger.info("Starting sync of skipped permission sets with DynamoDB table")
     try:
+        logger.info("Scanning DynamoDB table for existing skipped permission sets")
         response = dynamodb.scan(
             TableName='ic-SkippedPermissionSetsTable')
         items = response['Items']
@@ -118,7 +120,7 @@ def sync_table_for_skipped_perm_sets(skipped_perm_set):
         unprocessed_items = batch.get('UnprocessedItems')
         if unprocessed_items:
             error_message=f"There were unprocessed skipped permission sets while writing to DynamoDB table: {unprocessed_items}"
-            logger.error(error_message)
+            # logger.error(error_message)
             log_and_append_error(error_message)
         else:
             logger.info("All skipped permission sets written successfully to the table")
@@ -127,7 +129,7 @@ def sync_table_for_skipped_perm_sets(skipped_perm_set):
         sleep(5)
     except ClientError as error:
         error_message=f"Client error occurred: {error}"
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
 
 def get_all_permission_sets():
@@ -159,7 +161,7 @@ def get_all_permission_sets():
                 description = describe_perm_set['PermissionSet'].get('Description', '-')
             except Exception as error:
                 error_message=f'Failed to get description for permission set {perm_set_arn}. Error: {error}'
-                logger.error(error_message)
+                # logger.error(error_message)
                 log_and_append_error(error_message)
                 description = 'Error retrieving description'
             perm_set_name = describe_perm_set['PermissionSet']['Name']
@@ -197,7 +199,7 @@ def get_all_permission_sets():
         sleep(2)
     except ClientError as error:
         error_message=f'Client error occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
     if skipped_perm_set:
         try:
@@ -205,7 +207,7 @@ def get_all_permission_sets():
             sync_table_for_skipped_perm_sets(skipped_perm_set)
         except Exception as error:
             error_message=f'Failed to invoke sync_table_for_skipped_perm_sets: {error}'
-            logger.error(error_message)
+            # logger.error(error_message)
             log_and_append_error(error_message)
     else:
         logger.info("No Permission Sets were skipped")
@@ -241,7 +243,7 @@ def get_all_permission_sets_if_delegate():
                 description = describe_perm_set['PermissionSet']['Description']
             except Exception as error:
                 error_message=f'Failed to get description for permission set {perm_set_arn}. Error: {error}'
-                logger.error(error_message)
+                # logger.error(error_message)
                 log_and_append_error(error_message)
             perm_set_name = describe_perm_set['PermissionSet']['Name']
             perm_set_arn = describe_perm_set['PermissionSet']['PermissionSetArn']
@@ -277,14 +279,15 @@ def get_all_permission_sets_if_delegate():
         sleep(2)
     except ClientError as error:
         error_message=f'Client error occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
+        log_and_append_error(error_message)
     if skipped_perm_set:
         try:
             logger.info(f"Skipped Permission Set Name and ARN: {skipped_perm_set}")
             sync_table_for_skipped_perm_sets(skipped_perm_set)
         except Exception as error:
             error_message=f'Failed to invoke sync_table_for_skipped_perm_sets: {error}'
-            logger.error(error_message)
+            # logger.error(error_message)
             log_and_append_error(error_message)
     else:
         logger.info("No Permission Sets were skipped")
@@ -311,20 +314,21 @@ def get_all_json_files(bucket_name):
                     temp_file.close()
                 except json.JSONDecodeError as json_error:
                     error_message = f'Error decoding JSON in file {file_name}: {json_error}'
-                    logger.error(error_message)
+                    # logger.error(error_message)
                     log_and_append_error(error_message)
                 except Exception as error:
                     error_message = f'Cannot load permission set content from file {file_name}: {error}'
-                    logger.error(error_message)
+                    # logger.error(error_message)
                     log_and_append_error(error_message)
     except Exception as error:
         error_message=f'Cannot load permission set content from s3 file: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
     return file_contents
 
 def create_permission_set(name, desc, tags, session_duration):
     """Create a permission set in AWS IAM Identity Center"""
+    logger.info(f"Creating permission set: {name}")
     try:
         response = ic_admin.create_permission_set(
             Name=name,
@@ -342,13 +346,14 @@ def create_permission_set(name, desc, tags, session_duration):
         sleep(2)
     except ClientError as error:
         error_message=f'Client error occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
     return response
 
 
-def add_managed_policy_to_perm_set(perm_set_arn, managed_policy_arn):
+def add_managed_policy_to_perm_set(local_name, perm_set_arn, managed_policy_arn):
     """Attach a managed policy to a permission set"""
+    logger.info(f"Attaching managed policy {managed_policy_arn} to permission set: {local_name} - {perm_set_arn}")
     try:
         attach_managed_policy = ic_admin.attach_managed_policy_to_permission_set(
             InstanceArn=ic_instance_arn,
@@ -366,13 +371,14 @@ def add_managed_policy_to_perm_set(perm_set_arn, managed_policy_arn):
         logger.warning("%s.The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
     except ClientError as error:
         error_message=f'Client error occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
     return attach_managed_policy
 
 
-def remove_managed_policy_from_perm_set(perm_set_arn, managed_policy_arn):
+def remove_managed_policy_from_perm_set(local_name, perm_set_arn, managed_policy_arn):
     """Remove a managed policy from a permission set"""
+    logger.info(f"Removing managed policy {managed_policy_arn} from permission set: {local_name} - {perm_set_arn}")
     try:
         remove_managed_policy = ic_admin.detach_managed_policy_from_permission_set(
             InstanceArn=ic_instance_arn,
@@ -389,14 +395,15 @@ def remove_managed_policy_from_perm_set(perm_set_arn, managed_policy_arn):
         logger.warning("%s.The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
     except ClientError as error:
         error_message=f'Client error occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
     return remove_managed_policy
 
 
-def add_cx_managed_policy_to_perm_set(perm_set_arn, policy_name,
+def add_cx_managed_policy_to_perm_set(local_name, perm_set_arn, policy_name,
                                       policy_path):
     """Attach a customer managed policy to a permission set"""
+    logger.info(f'Adding Customer Managed Policiy {policy_name} and {policy_path }for Permission Set: {local_name}')
     try:
         attach_cx_managed_policy = ic_admin.attach_customer_managed_policy_reference_to_permission_set(
             InstanceArn=ic_instance_arn,
@@ -407,7 +414,7 @@ def add_cx_managed_policy_to_perm_set(perm_set_arn, policy_name,
             }
         )
         logger.info('Customer Managed Policy %s added to %s', policy_path,
-                    perm_set_arn)
+                    local_name)
         sleep(0.1)  # Avoid hitting API limit.
 
     except ic_admin.exceptions.ThrottlingException as error:
@@ -417,13 +424,14 @@ def add_cx_managed_policy_to_perm_set(perm_set_arn, policy_name,
         logger.warning("%s.The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
     except ClientError as error:
         error_message=f'Client error occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
     return attach_cx_managed_policy
 
 
-def remove_cx_managed_policy_from_perm_set(perm_set_arn, policy_name, policy_path):
+def remove_cx_managed_policy_from_perm_set(local_name, perm_set_arn, policy_name, policy_path):
     """Remove a customer managed policy from a permission set"""
+    logger.info(f'Removing Customer Managed Policy {policy_name} at {policy_path} for Permission Set: {local_name}')
     try:
         remove_cx_managed_policy = ic_admin.detach_customer_managed_policy_reference_from_permission_set(
             InstanceArn=ic_instance_arn,
@@ -434,7 +442,7 @@ def remove_cx_managed_policy_from_perm_set(perm_set_arn, policy_name, policy_pat
             }
         )
         logger.info('Managed Policy %s removed \
-                    from %s', policy_name, perm_set_arn)
+                    from %s', policy_name, local_name)
         sleep(0.1)  # Avoid hitting API limit.
     except ic_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit API limits. Sleep 2s...", error)
@@ -443,12 +451,12 @@ def remove_cx_managed_policy_from_perm_set(perm_set_arn, policy_name, policy_pat
         logger.info("%s.The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
     except ClientError as error:
         error_message=f'Client error occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
     return remove_cx_managed_policy
 
 
-def sync_managed_policies(local_managed_policies, perm_set_arn):
+def sync_managed_policies(local_name, local_managed_policies, perm_set_arn):
     """
     Synchronize Managed Policies as defined in the JSON file with AWS
     Declare arrays for keeping track on Managed policies locally and on AWS
@@ -457,6 +465,8 @@ def sync_managed_policies(local_managed_policies, perm_set_arn):
     aws_managed_attached_dict = {}
     local_policy_names = []
     local_policy_dict = {}
+
+    logger.info(f'Syncing AWS Managed Policies for Permission Set: {local_name}')
 
     # Get all the managed policies attached to the permission set.
     try:
@@ -478,11 +488,11 @@ def sync_managed_policies(local_managed_policies, perm_set_arn):
 
         for policy_name in local_policy_names:
             if not policy_name in aws_managed_attached_names:
-                add_managed_policy_to_perm_set(perm_set_arn, local_policy_dict[policy_name])
+                add_managed_policy_to_perm_set(local_name, perm_set_arn, local_policy_dict[policy_name])
 
         for aws_policy in aws_managed_attached_names:
             if not aws_policy in local_policy_names:
-                remove_managed_policy_from_perm_set(perm_set_arn,
+                remove_managed_policy_from_perm_set(local_name, perm_set_arn,
                                                     aws_managed_attached_dict[aws_policy])
     except ic_admin.exceptions.ThrottlingException as error:
         logger.warning("%s.Hit IAM Identity Center API limits. Sleep 5s.", error)
@@ -492,11 +502,11 @@ def sync_managed_policies(local_managed_policies, perm_set_arn):
         sleep(2)
     except Exception as error:
         error_message=f'Exception occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
 
 
-def sync_customer_policies(local_customer_policies, perm_set_arn):
+def sync_customer_policies(local_name, local_customer_policies, perm_set_arn):
     """
     Synchronize customer managed policies as defined in the JSON file with AWS
     Declare arrays for keeping track on custom policies locally and on AWS
@@ -505,6 +515,8 @@ def sync_customer_policies(local_customer_policies, perm_set_arn):
     customer_managed_attached_dict = {}
     local_policy_names = []
     local_policy_dict = {}
+
+    logger.info(f'Syncing Customer Managed Policies for Permission Set: {local_name}')
 
     # Get all the customer managed policies attached to the permission set.
     try:
@@ -528,12 +540,12 @@ def sync_customer_policies(local_customer_policies, perm_set_arn):
         # Iterate local policy dictionary(key and value):
         for policy_name, policy_path in local_policy_dict.items():
             if not policy_name in customer_managed_attached_names:
-                add_cx_managed_policy_to_perm_set(perm_set_arn, policy_name,
+                add_cx_managed_policy_to_perm_set(local_name, perm_set_arn, policy_name,
                                                   policy_path)
 
         for ex_policy_name, ex_policy_path in customer_managed_attached_dict.items():
             if not ex_policy_name in local_policy_names:
-                remove_cx_managed_policy_from_perm_set(perm_set_arn, ex_policy_name,
+                remove_cx_managed_policy_from_perm_set(local_name, perm_set_arn, ex_policy_name,
                                                        ex_policy_path)
     except ic_admin.exceptions.ThrottlingException as error:
         logger.warning(
@@ -544,11 +556,12 @@ def sync_customer_policies(local_customer_policies, perm_set_arn):
         sleep(2)
     except Exception as error:
         error_message=f'Exception occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
 
-def remove_inline_policies(perm_set_arn):
+def remove_inline_policies(local_name, perm_set_arn):
     """Remove Inline policies from permission set if they exist"""
+    logger.info(f"Removing inline policies from permission set: {local_name} - {perm_set_arn}")
     try:
         list_existing_inline = ic_admin.get_inline_policy_for_permission_set(
             InstanceArn=ic_instance_arn,
@@ -560,7 +573,7 @@ def remove_inline_policies(perm_set_arn):
                 InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn
             )
-            logger.info('Removed inline policy for %s', perm_set_arn)
+            logger.info('Removed inline policy for %s - %s', local_name, perm_set_arn)
             sleep(0.1)  # Avoid hitting API limit.
     except ic_admin.exceptions.ThrottlingException as error:
         logger.warning(
@@ -571,14 +584,15 @@ def remove_inline_policies(perm_set_arn):
         sleep(2)
     except ClientError as error:
         error_message=f'Client error occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
 
-def sync_inline_policies(local_inline_policy, perm_set_arn):
+def sync_inline_policies(local_name, local_inline_policy, perm_set_arn):
     """Synchronize Inline Policies as define in the JSON file with AWS"""
+    logger.info(f"Syncing inline policies for permission set: {local_name} - {perm_set_arn}")
     if local_inline_policy:
         try:
-            logger.info('Synchronizing inline policy with %s', perm_set_arn)
+            logger.info('Synchronizing inline policy with %s - %s', local_name, perm_set_arn)
             ic_admin.put_inline_policy_to_permission_set(
                 InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn,
@@ -597,11 +611,12 @@ def sync_inline_policies(local_inline_policy, perm_set_arn):
             #     failureDetails={'message': str(error), 'type': 'JobFailed'}
             # )
     else:
-        remove_inline_policies(perm_set_arn)
+        remove_inline_policies(local_name, perm_set_arn)
 
 
 def delete_permission_set(perm_set_arn, perm_set_name):
     """Delete IAM Identity Center permission sets"""
+    logger.info(f"Deleting permission set: {perm_set_name} ({perm_set_arn})")
     try:
         ic_admin.delete_permission_set(
             InstanceArn=ic_instance_arn,
@@ -616,14 +631,103 @@ def delete_permission_set(perm_set_arn, perm_set_name):
         logger.warning("%sThe same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
     except ClientError as error:
         error_message=f'Client error occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
 
-def sync_description(perm_set_arn, local_desc, aws_desc, session_duration):
+def put_permissions_boundary(local_name, perm_set_arn, boundary_policy):
+    """Attach a permissions boundary to a permission set"""
+    logger.info(f'Putting Permissions Boundary for Permission Set: {local_name} - {perm_set_arn}')
+    try:
+        if 'Path' in boundary_policy:
+            # Customer managed policy
+            ic_admin.put_permissions_boundary_to_permission_set(
+                InstanceArn=ic_instance_arn,
+                PermissionSetArn=perm_set_arn,
+                PermissionsBoundaryType='CUSTOMER_MANAGED_POLICY',
+                CustomerManagedPolicyReference={
+                    'Name': boundary_policy['Name'],
+                    'Path': boundary_policy['Path']
+                }
+            )
+            sleep(0.1)
+        else:
+            # AWS managed policy
+            ic_admin.put_permissions_boundary_to_permission_set(
+                InstanceArn=ic_instance_arn,
+                PermissionSetArn=perm_set_arn,
+                PermissionsBoundaryType='MANAGED_POLICY',
+                ManagedPolicyArn=boundary_policy['Arn']
+            )
+            sleep(0.1)
+    except ClientError as error:
+        error_message = f'Error attaching permission boundary for Permission Set {local_name} - {perm_set_arn}: {error}'
+        # logger.error(error_message)
+        log_and_append_error(error_message)
+
+def delete_permissions_boundary(local_name, perm_set_arn):
+    """Remove permissions boundary from a permission set"""
+    logger.info(f'Deleting Permissions Boundary for Permission Set: {local_name} - {perm_set_arn}')
+    try:
+        ic_admin.delete_permissions_boundary_from_permission_set(
+            InstanceArn=ic_instance_arn,
+            PermissionSetArn=perm_set_arn
+        )
+        sleep(0.1)
+    except ClientError as error:
+        error_message = f'Error removing permission boundary from Permission Set {local_name} - {perm_set_arn}: {error}'
+        # logger.error(error_message)
+        log_and_append_error(error_message)
+        
+def sync_permissions_boundary(local_name, local_boundary, perm_set_arn):
+    """Sync permissions boundary configuration"""
+    logger.info(f'Syncing Permissions Boundary for Permission Set: {local_name} - {perm_set_arn}')
+    try:
+        current_boundary = None
+        current_type = None
+        try:
+            boundary_info = ic_admin.describe_permissions_boundary_for_permission_set(
+                InstanceArn=ic_instance_arn,
+                PermissionSetArn=perm_set_arn
+            ).get('PermissionsBoundary', {})
+            
+            if 'ManagedPolicyArn' in boundary_info:
+                current_boundary = boundary_info['ManagedPolicyArn']
+                current_type = 'MANAGED_POLICY'
+            elif 'CustomerManagedPolicyReference' in boundary_info:
+                current_boundary = boundary_info['CustomerManagedPolicyReference']
+                current_type = 'CUSTOMER_MANAGED_POLICY'
+        except ic_admin.exceptions.ResourceNotFoundException:
+            pass
+
+        if local_boundary:
+            # Determine if boundary configuration has changed
+            needs_update = False
+            if current_type == 'MANAGED_POLICY':
+                needs_update = current_boundary != local_boundary.get('Arn')
+            elif current_type == 'CUSTOMER_MANAGED_POLICY':
+                needs_update = (current_boundary.get('Name') != local_boundary.get('Name') or
+                              current_boundary.get('Path') != local_boundary.get('Path'))
+            else:
+                needs_update = True
+
+            if needs_update:
+                if current_boundary:
+                    delete_permissions_boundary(local_name, perm_set_arn)
+                put_permissions_boundary(local_name, perm_set_arn, local_boundary)
+        elif current_boundary:
+            delete_permissions_boundary(local_name, perm_set_arn)
+            
+    except ClientError as error:
+        error_message = f'Error syncing permission boundary: {error}'
+        # logger.error(error_message)
+        log_and_append_error(error_message)
+
+def sync_description(local_name, perm_set_arn, local_desc, aws_desc, session_duration):
     """Synchronize the description between the JSON file and AWS service"""
+    logger.info(f'Syncing description for Permission Set: {local_name} - {perm_set_arn}')
     if not local_desc == aws_desc:
         try:
-            logger.info('Updating description for %s', perm_set_arn)
+            logger.info('Updating description for %s - %s', local_name, perm_set_arn)
             ic_admin.update_permission_set(
                 InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn,
@@ -643,10 +747,10 @@ def tag_permission_set(local_name, local_tags, perm_set_arn):
             ResourceArn=perm_set_arn,
             Tags=local_tags
         )
-        logger.info('Tags added to or updated for %s', local_name)
+        logger.info('Tags added to or updated for %s - %s', local_name, perm_set_arn)
     except ClientError as error:
         error_message=f'Client error occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
 
 def remove_tag(key, perm_set_arn, local_name):
@@ -659,14 +763,15 @@ def remove_tag(key, perm_set_arn, local_name):
                 key,
             ]
         )
-        logger.info('Tag removed from %s', local_name)
+        logger.info('Tag removed from %s - %s', local_name, perm_set_arn)
     except ClientError as error:
         error_message=f'Client error occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
 
 def sync_tags(local_name, local_tags, perm_set_arn):
     """Synchronize the tags between the JSON and AWS"""
+    logger.info(f'Syncing tags for Permission Set: {local_name} - {perm_set_arn}')
     try:
         list_tags = ic_admin.list_tags_for_resource(
             InstanceArn=ic_instance_arn,
@@ -700,7 +805,7 @@ def sync_tags(local_name, local_tags, perm_set_arn):
         sleep(3)
     except ClientError as error:
         error_message=f'Client error occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
 
 def get_accounts_by_perm_set(perm_set_arn):
@@ -725,7 +830,7 @@ def get_accounts_by_perm_set(perm_set_arn):
         sleep(5)
     except ClientError as error:
         error_message=f'Client error occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
     return acct_list
 
@@ -784,11 +889,14 @@ def deprovision_permission_set_from_accounts(perm_set_arn,
         sleep(2)
     except ClientError as error:
         error_message=f'Client error occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
 
 def reprovision_permission_sets(perm_set_name, perm_set_arn):
     """Find and re-provision the drifted permission sets"""
+
+    logger.info(f'Reprovisioning Permission Set: {perm_set_name}')
+    
     account_ids = get_accounts_by_perm_set(perm_set_arn)
     outdated_accounts = []
 
@@ -812,7 +920,7 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn):
             sleep(2)
         except ClientError as error:
             error_message=f'Client error occurred: {error}'
-            logger.error(error_message)
+            # logger.error(error_message)
             log_and_append_error(error_message)
 
     # If any accounts were found to be out of date - reprovision the permission set to all accounts.
@@ -848,6 +956,8 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn):
                         sleep(2)
                     else:
                         complete = 'true'
+                        logger.info("Reprovisioning %s for the following \
+                        accounts: %s completed successfully", perm_set_name, account_ids)
         except ic_admin.exceptions.ThrottlingException as error:
             logger.warning("%sHit API limits. Sleep 5s...", error)
             sleep(5)
@@ -856,7 +966,7 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn):
             sleep(2)
         except ClientError as error:
             error_message=f'Client error occurred: {error}'
-            logger.error(error_message)
+            # logger.error(error_message)
             log_and_append_error(error_message)
 
 def validate_permission_set_schema(permission_set):
@@ -873,8 +983,15 @@ def validate_permission_set_schema(permission_set):
         "Description": str,
         "Tags": list,
         "CustomerPolicies": list,
-        "Session_Duration": str
+        "Session_Duration": str,
+        "PermissionsBoundary": dict
     }
+
+    # Validate PermissionsBoundary if present
+    if 'PermissionsBoundary' in permission_set:
+        boundary = permission_set['PermissionsBoundary']
+        if not isinstance(boundary, dict) or 'Name' not in boundary or 'Arn' not in boundary:
+            raise ValueError(f"PermissionsBoundary must be a dictionary with 'Name' and 'Arn' fields in permission set {permission_set_name}")
 
     permission_set_name = permission_set.get('Name', 'Unknown')
 
@@ -927,7 +1044,7 @@ def sync_json_with_aws(local_files, aws_permission_sets):
                 validate_permission_set_schema(local_permission_set)
             except (ValueError, TypeError) as e:
                 error_message=f'Validation error: {e}'
-                logger.error(error_message)
+                # logger.error(error_message)
                 log_and_append_error(error_message)
                 return
             logger.info("Syncing %s", local_permission_set['Name'])
@@ -985,15 +1102,20 @@ def sync_json_with_aws(local_files, aws_permission_sets):
             if not skipped:
                 # Synchronize managed and inline policies for all local permission sets with AWS.
                 sync_managed_policies(
-                    local_managed_policies, aws_permission_sets[local_name]['Arn'])
+                    local_name, local_managed_policies, aws_permission_sets[local_name]['Arn'])
                 sync_customer_policies(
-                    local_customer_policies, aws_permission_sets[local_name]['Arn'])
+                    local_name, local_customer_policies, aws_permission_sets[local_name]['Arn'])
                 sync_inline_policies(
-                    local_inline_policy, aws_permission_sets[local_name]['Arn'])
-                sync_description(aws_permission_sets[local_name]['Arn'], local_desc,
+                    local_name, local_inline_policy, aws_permission_sets[local_name]['Arn'])
+                sync_description(local_name, aws_permission_sets[local_name]['Arn'], local_desc,
                                  aws_permission_sets[local_name]['Description'], local_session_duration)
                 sync_tags(local_name, local_tags,
                           aws_permission_sets[local_name]['Arn'])
+                
+                # Sync permission boundary if configured
+                local_boundary = local_permission_set.get('PermissionsBoundary')
+                sync_permissions_boundary(local_name, local_boundary, aws_permission_sets[local_name]['Arn'])
+                
                 reprovision_permission_sets(
                         local_name, aws_permission_sets[local_name]['Arn'])
 
@@ -1018,11 +1140,11 @@ def sync_json_with_aws(local_files, aws_permission_sets):
                             aws_permission_sets[aws_perm_set]['Arn'], aws_perm_set)
                 except Exception as error:
                     error_message=f'Delete failed due to: {error}'
-                    logger.error(error_message)
+                    # logger.error(error_message)
                     log_and_append_error(error_message)
     except Exception as error:
         error_message=f'Sync AWS permission sets failed. Error: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         if errors:
             error_message = f'Errors encountered during processing: {errors}'
@@ -1051,7 +1173,7 @@ def start_automation():
         # invoke_auto_assignment()
     except Exception as error:
         error_message=f'Exception occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
 
 def main(event=None):
@@ -1124,7 +1246,7 @@ def main(event=None):
 
     except Exception as error:
         error_message = f'Exception occurred: {error}'
-        logger.error(error_message)
+        # logger.error(error_message)
         log_and_append_error(error_message)
         if errors:
             logger.error(f'Errors during execution: {errors}')

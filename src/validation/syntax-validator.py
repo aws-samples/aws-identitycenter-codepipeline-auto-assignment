@@ -29,6 +29,7 @@ def validate_inline_policies(policies: dict) -> tuple[bool, list[str]]:
     Validate the complete inline policies structure.
     Returns (is_valid, list_of_errors).
     """
+    logger.info("Starting validation of inline policies")
     errors = []
     
     # Validate basic structure
@@ -69,6 +70,7 @@ def validate_inline_policy_statement(statement: dict) -> tuple[bool, str]:
     Validate an IAM policy statement.
     Returns (is_valid, error_message).
     """
+    logger.info("Validating IAM policy statement")
     if not isinstance(statement, dict):
         return False, "Statement must be a dictionary"
     
@@ -96,6 +98,7 @@ def validate_duplicate_ps_names(base_path: str) -> list[str]:
     Verify if there are any duplicate permission set files.
     Returns a list of validation errors.
     """
+    logger.info("Checking for duplicate permission set names")
     errors = []
     
     try:
@@ -130,6 +133,7 @@ def validate_file_name_matches_content(file_name: str, content_name: str) -> boo
     Validate that the JSON file name matches the Name field in content.
     Example: "admin-access.json" should contain {"Name": "admin-access"}
     """
+    logger.info(f"Validating if file name matches content: {file_name} vs {content_name}")
     base_name = file_name.rsplit('.', 1)[0] if '.' in file_name else file_name
     return base_name == content_name
 
@@ -244,7 +248,8 @@ def validate_permission_set_schema(permission_set, errors):
         "Description": str,
         "Tags": list,
         "CustomerPolicies": list,
-        "Session_Duration": str
+        "Session_Duration": str,
+        "PermissionsBoundary": dict
     }
 
     for key in permission_set.keys():
@@ -288,6 +293,27 @@ def validate_permission_set_schema(permission_set, errors):
     unknown_keys = set(permission_set.keys()) - allowed_keys
     if unknown_keys:
         log_and_append_error(f"Unknown keys found in permission set {permission_set_name}: {', '.join(unknown_keys)}", errors)
+        
+    # Validate PermissionsBoundary if present
+    if 'PermissionsBoundary' in permission_set:
+        boundary = permission_set['PermissionsBoundary']
+        if not isinstance(boundary, dict):
+            log_and_append_error(f"PermissionsBoundary must be a dictionary in permission set {permission_set_name}", errors)
+        else:
+            if "Name" not in boundary:
+                log_and_append_error(f"PermissionsBoundary must have 'Name' field in permission set {permission_set_name}", errors)
+            
+            # Check if it's a customer managed policy
+            if 'Path' in boundary:
+                if not isinstance(boundary['Path'], str):
+                    log_and_append_error(f"PermissionsBoundary Path must be a string in permission set {permission_set_name}", errors)
+                if not boundary.get('CustomerManagedPolicyReference', False):
+                    log_and_append_error(f"CustomerManagedPolicyReference must be true when using Path in permission set {permission_set_name}", errors)
+            # Otherwise should be AWS managed policy
+            elif 'Arn' not in boundary:
+                log_and_append_error(f"PermissionsBoundary must have either 'Path' for customer managed policy or 'Arn' for AWS managed policy in permission set {permission_set_name}", errors)
+            elif not verify_policy_name_matches_arn(boundary["Name"], boundary["Arn"]):
+                log_and_append_error(f"Permission boundary name '{boundary['Name']}' does not match ARN basename in {permission_set_name}", errors)
 
     policy_count = len(permission_set.get("ManagedPolicies", []))
     if policy_count > 20:
@@ -340,6 +366,7 @@ def validate_permission_set_references(permission_sets: list[str], errors: list)
             log_and_append_error("Empty permission set name found", errors)
 
 def validate_mapping_file_structure(permission_set_file, group_type, errors):
+    logger.info(f"Validating mapping file structure for {group_type} in {permission_set_file}")
     def check_permission_set_name_format(items: list) -> bool:
         """Check if all items use the same format (string or list) for PermissionSetName"""
         has_string = any(isinstance(item.get('PermissionSetName'), str) for item in items)
@@ -448,6 +475,7 @@ def validate_all_files():
     """
     Main function to validate all permission set and mapping files from the git repository.
     """
+    logger.info("Validating all files")
     errors = []
     try:
         base_path = 'identity-center-mapping-info'

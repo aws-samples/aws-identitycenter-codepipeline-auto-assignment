@@ -1,0 +1,22 @@
+{
+    "Name": "6-example-cx-managed-policy-boundary",
+    "Description": "Example permission set with customer managed boundary policy",
+    "Session_Duration": "PT12H",
+    "Tags": [
+        {
+            "Key": "identity-center-solution",
+            "Value": "test"
+        }
+    ],
+    "ManagedPolicies": [
+        {
+            "Name": "ViewOnlyAccess",
+            "Arn": "arn:aws:iam::aws:policy/job-function/ViewOnlyAccess"
+        }
+    ],
+    "InlinePolicies": [],
+    "PermissionsBoundary": {
+        "Name": "example-customer-managed-policy",
+        "Path": "/custom/"
+    }
+}
