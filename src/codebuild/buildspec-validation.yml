@@ -20,8 +20,13 @@ phases:
       - python3 src/validation/syntax-validator.py || VALIDATION_FUNCTION_EXIT_CODE=$?
       - |
         if [ $VALIDATION_FUNCTION_EXIT_CODE -ne 0 ]; then 
-        ERROR_MESSAGE="[ERROR]Validation function (syntax_validator.py) failed with exit code $VALIDATION_FUNCTION_EXIT_CODE :( Please see function logs above or in CloudWatch for details"
+        ERROR_MESSAGE="[ERROR] Validation function (syntax_validator.py) failed with exit code $VALIDATION_FUNCTION_EXIT_CODE :( Please see function logs above or in CloudWatch for details"
         EXIT_CODE=$VALIDATION_FUNCTION_EXIT_CODE
+        fi
+        if [ -n "$ERROR_MESSAGE" ]; then
+        echo "$ERROR_MESSAGE"
+        else
+        echo "Validation function (syntax_validator.py) ran successfully. Execution is now complete :)"
         fi
       - echo 'Exiting build with final exit code:' $EXIT_CODE
       - exit $EXIT_CODE

@@ -250,11 +250,14 @@ Resources:
                 Action:
                   - "sso:AttachCustomerManagedPolicyReferenceToPermissionSet"
                   - "sso:AttachManagedPolicyToPermissionSet"
+                  - "sso:DescribeAccountAssignmentDeletionStatus"
+                  - "sso:DescribeAccountAssignmentCreationStatus"
                   - "sso:CreatePermissionSet"
                   - "sso:DeletePermissionSet"
                   - "sso:DeletePermissionsBoundaryFromPermissionSet"
                   - "sso:DeletePermissionsPolicy"
                   - "sso:DescribePermissionSet"
+                  - "sso:DescribeInstance"
                   - "sso:DescribePermissionSetProvisioningStatus"
                   - "sso:DescribePermissionsPolicies"
                   - "sso:DescribeRegisteredRegions"
@@ -266,9 +269,12 @@ Resources:
                   - "sso:GetPermissionsPolicy"
                   - "sso:ListAccountAssignments"
                   - "sso:DeleteAccountAssignment"
+                  - "sso:DeleteInlinePolicyFromPermissionSet"
                   - "sso:ListAccountsForProvisionedPermissionSet"
                   - "sso:ListCustomerManagedPolicyReferencesInPermissionSet"
                   - "sso:ListManagedPoliciesInPermissionSet"
+                  - "sso:ListAccountAssignmentDeletionStatus"
+                  - "sso:ListAccountAssignmentCreationStatus"
                   - "sso:ListPermissionSetProvisioningStatus"
                   - "sso:ListPermissionSets"
                   - "sso:ListPermissionSetsProvisionedToAccount"
@@ -343,6 +349,7 @@ Resources:
                   - "codepipeline:PutJobFailureResult"
                   - "codepipeline:PutJobSuccessResult"
                   - "iam:AttachRolePolicy"
+                  - "iam:DetachRolePolicy"
                   - "iam:CreateRole"
                   - "iam:CreateSAMLProvider"
                   - "iam:GetRole"
@@ -368,6 +375,7 @@ Resources:
                   - "sso:DeleteAccountAssignment"
                   - "sso:DescribePermissionSet"
                   - "sso:ListAccountAssignments"
+                  - "sso:ListAccountAssignmentsForPrincipal"
                   - "sso:ListPermissionSets"
                   - "sso:ListTagsForResource"
                   - "sso:UpdateSSOConfiguration"
@@ -381,6 +389,8 @@ Resources:
                   - "organizations:DescribeAccount"
                   - "organizations:ListChildren"
                   - "organizations:ListOrganizationalUnitsForParent"
+                  - "organizations:ListParents"
+                  - "organizations:DescribeOrganizationalUnit"
                 Resource:
                   - !Sub "arn:aws:organizations::${AWS::AccountId}:ou/o-*/ou-*"
                   - !Sub "arn:aws:organizations::${AWS::AccountId}:account/o-*/*"
@@ -542,6 +552,10 @@ Resources:
           eventName:
             - AssociateProfile
             - AttachManagedPolicyToPermissionSet
+            - AttachCustomerManagedPolicyReferenceToPermissionSet
+            - DeletePermissionsBoundaryFromPermissionSet
+            - DetachCustomerManagedPolicyReferenceFromPermissionSet
+            - PutPermissionsBoundaryToPermissionSet
             - CreateAccountAssignment
             - CreateInstanceAccessControlAttributeConfiguration
             - CreatePermissionSet
@@ -549,6 +563,7 @@ Resources:
             - DeleteAccountAssignment
             - DeleteInlinePolicyFromPermissionSet
             - DeleteInstanceAccessControlAttributeConfiguration
+            - UpdateInstanceAccessControlAttributeConfiguration
             - DeletePermissionSet
             - DeletePermissionsPolicy
             - DetachManagedPolicyFromPermissionSet
@@ -559,6 +574,7 @@ Resources:
             - UntagResource
             - UpdatePermissionSet
             - UpdateProfile
+            - UpdateInstance
             - UpdateSSOConfiguration
           userIdentity:
             sessionContext:
