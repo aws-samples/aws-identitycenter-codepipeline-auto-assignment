@@ -80,9 +80,9 @@ This also recommended as a best practice:
     - If you have an existing IAM role or a user to administer KMS key used to encrypt S3 bucket for Identity Center solution, without triggering notifications for manual changes, add the ARN of the existing IAM role or user to *"ICKMSAdminArn"* and change the value of *"createICKMSAdminRole"* to "false". If you do not have an existing IAM role or a user, leave the value of *"ICKMSAdminArn"* empty '' and change the value of *"createICKMSAdminRole"* to true and the solution will create an IAM role for you.
     - You can provide your email address or a distribution list as avalue for *"SNSEmailEndpointSubscription"* to receive SNS notifications for manual changed detected within Identity Center.
     - If you'd like the solution to create a KMS key to encrypt ICMappingBucket, set *"createS3KmsKey"* to "true". Alternatively, if you wish to use an existing KMS key, set the *"createS3KmsKey"* to false and provide your KMS key ARN to *"S3KmsArn"*. Please note that if you choose to provide your KMS key, you'd need to ensure proper KMS key policy and management. 
-4. In your delegated administrator account, use the codepipeline-stack.template cloudformation template to provision the AWS Code Pipeline and related CICD resources in the same region that IAM Identity Center service is enabled. On the Specify stack details page, type a stack name in the Stack name box. You can choose any name, such as, *id-center-pipeline-stack*.
+4. In your delegated administrator account, use the templates/codepipeline-stack.template cloudformation template to provision the AWS Code Pipeline and related CICD resources in the same region that IAM Identity Center service is enabled. On the Specify stack details page, type a stack name in the Stack name box. You can choose any name, such as, *id-center-pipeline-stack*.
 5. In the Parameters section, specify the following parameters:
-    - *GeneratePermissionSetsAndMappings*: Set to true if you want to deploy a separate build project to generate permission sets and mapping JSON files, ONLY if you are already using Identity Center and would like to import existing permission sets and assignments into this solution. Please note that you must manually upload `src/automation-code/permission-set-and-mapping-files-generator/auto-generate-permissionsets-mapping-files.py` file to the S3 Bucket and run the build project to generate permission sets and mapping files before pushing code to your source code repository. The name of the S3 Bucket and the Build Project can be found in Outputs section of the stack once the codepipeline-stack.template is deployed successfully.
+    - *GeneratePermissionSetsAndMappings*: Set to true if you want to deploy a separate build project to generate permission sets and mapping JSON files, ONLY if you are already using Identity Center and would like to import existing permission sets and assignments into this solution. Please note that you must manually upload `src/automation-code/permission-set-and-mapping-files-generator/auto-generate-permissionsets-mapping-files.py` file to the S3 Bucket to trigger the build project that generates permission sets and mapping files before pushing code to your source code repository. The name of the S3 Bucket and the Build Project can be found in Outputs section of the stack once the codepipeline-stack.template is deployed successfully.
     - *ICInstanceARN*: Required when GeneratePermissionSetsAndMappings is set to true. ICInstanceARN can be found on the AWS IAM Identity Center console 'Settings' page.
     - *IdentityStoreId*: Required when GeneratePermissionSetsAndMappings is set to true. Identity Store ID can be found on the AWS IAM Identity Center console 'Settings' page.
     - *AutomationBuildProjectName*: Specify the name for the automation CodeBuild projects or leave default.
@@ -92,47 +92,53 @@ This also recommended as a best practice:
     - *RepositoryName*: The name of the repository (full name of repository with path for CodeStarConnection; repository name for AWS CodeCommit).
     - *RepoBranch*: The name of branch that will trigger the CodePipeline run. Default is 'main'.
     - *SNSPipelineApprovalEmail*: The email that will receive and approve pipeline approval notifications.
-6. (Optional) If you set *GeneratePermissionSetsAndMappings* to 'true', upload the *src/automation-code/permission-set-and-mapping-files-generator/auto-generate-permissionsets-mapping-files.py* file to the root of the S3 bucket (Bucket name starts with 'icpermsetmapping'). Once uploaded, navigate to CodeBuild > Build Projects > IC-GeneratePermissionSetsAndMappingFiles and hit Start Build. This will read your existing Identity Center configuration and generate a *identity-center-mapping-info* folder with necessary files in the S3 Bucket.
+6. (Optional) If you set *GeneratePermissionSetsAndMappings* to 'true', upload the *src/automation-code/permission-set-and-mapping-files-generator/auto-generate-permissionsets-mapping-files.py* file to the root of the S3 bucket (Bucket name starts with 'icpermsetmapping'). Once uploaded, an EventBridge Rule will automatically trigger the CodeBuild Project to generate necessary JSON files and directory structure. You can navigate to CodeBuild > Build Projects > IC-GeneratePermissionSetsAndMappingFiles to check the status of the build. This will read your existing Identity Center configuration and generate a *identity-center-mapping-info* folder with necessary files in the S3 Bucket, which you can use in the next step before running the automation.
 7. Create your own permission sets json defination files as well as the account assignment defination file "global-mapping.json" and "target-mapping.json". Note, if you chose to perform the optional Step 6 above, the existing permission sets and mapping files will be in the S3 bucket. You can replace the files in *identity-center-mapping-info* folder in this repository with the one generated in the S3 bucket.
 8. Push the following files to your CodeCommit repository, e.g. Linux tree structure:
 ```
+├── CHANGELOG.md
+├── CODE_OF_CONDUCT.md
+├── CONTRIBUTING.md
 ├── LICENSE
 ├── README.md
-├── codepipeline-stack.template
-├── delegate-admin
-│   ├── IC-Delegate-Admin.template
-│   └── IC_delegate_admin_main.py
 ├── diagram
 │   └── architecture_diagram.png
-├── identity-center-automation.template
 ├── identity-center-mapping-info
 │   ├── global-mapping.json
 │   ├── permission-sets
-│   │   ├── example-1.json
-│   │   ├── example-2.json
-│   │   ├── example-3.json
-│   │   ├── ...
-│   │   └── example-99.json
+│   │   ├── 1-example-admin.json
+│   │   ├── 2-example-readonly.json
+│   │   ├── 3-example-billing.json
+│   │   ├── 4-example-operations.json
+│   │   ├── 5-example-sec-readonly.json
+│   │   ├── 6-example-cx-managed-policy-boundary.json
+│   │   └── 7-example-aws-managed-policy-boundary.json
 │   └── target-mapping.json
-├── identity-center-s3-bucket.template
 ├── identity-center-stacks-parameters.json
-└── src
-    ├── automation-code
-    │   ├── identity-center-auto-assign
-    │   │   ├── auto-assignment.py
-    │   │   └── cfnresponse.py
-    │   ├── identity-center-auto-permissionsets
-    │   │   ├── auto-permissionsets.py
-    │   │   └── cfnresponse.py
-    │   └── permission-set-and-mapping-files-generator
-    │       └── auto-generate-permissionsets-mapping-files.py
-    ├── codebuild
-    │   ├── buildspec-mapping.yml
-    │   ├── buildspec-param.yml
-    │   ├── buildspec-validation.yml
-    │   └── buildspec-zipfiles.yml
-    └── validation
-        └── syntax-validator.py
+├── src
+│   ├── automation-code
+│   │   ├── identity-center-auto-assign
+│   │   │   ├── auto-assignment.py
+│   │   │   └── cfnresponse.py
+│   │   ├── identity-center-auto-permissionsets
+│   │   │   ├── auto-permissionsets.py
+│   │   │   └── cfnresponse.py
+│   │   └── permission-set-and-mapping-files-generator
+│   │       └── auto-generate-permissionsets-mapping-files.py
+│   ├── codebuild
+│   │   ├── buildspec-mapping.yml
+│   │   ├── buildspec-param.yml
+│   │   ├── buildspec-validation.yml
+│   │   └── buildspec-zipfiles.yml
+│   └── validation
+│       └── syntax-validator.py
+└── templates
+    ├── codepipeline-stack.template
+    ├── delegate-admin
+    │   ├── IC-Delegate-Admin.template
+    │   └── IC_delegate_admin_main.py
+    ├── identity-center-automation.template
+    └── identity-center-s3-bucket.template
 ```
 9. The pipeline will automatically create 2 new CloudFormation stacks *IdentityCenter-S3-Bucket-Stack* and *IdentityCenter-Automation-Stack* in your account and upload your permission sets and mapping files to a centralized S3 bucket. The non-default parameters are specified in identity-center-stacks-parameters.json file.
 10. The 'ReviewAndExecute' stage needs manual approval before the Pipeline invoke the CodeBuild Project. Once the pipeline is completed, verify the permission sets and account mapping on the AWS IAM Identity Center service console.
@@ -153,7 +159,7 @@ This also recommended as a best practice:
     - If you'd like the solution to create a KMS key to encrypt ICMappingBucket, set *"createS3KmsKey"* to "true". Alternatively, if you wish to use an existing KMS key, set the *"createS3KmsKey"* to false and provide your KMS key ARN to *"S3KmsArn"*. Please note that if you choose to provide your KMS key, you'd need to ensure proper KMS key policy and management. 
 4. In your AWS Organization Management account, use the codepipeline-stack.template cloudformation template to provision the AWS Code Pipeline and related CICD resources in the same region that IAM Identity Center service is enabled. On the Specify stack details page, type a stack name in the Stack name box. You can choose any name, such as, *id-center-pipeline-stack*.
 5. In the Parameters section, specify the following parameters:
-    - *GeneratePermissionSetsAndMappings*: Set to true if you want to deploy a separate build project to generate permission sets and mapping JSON files, ONLY if you are already using Identity Center and would like to import existing permission sets and assignments into this solution. Please note that you must manually upload `src/automation-code/permission-set-and-mapping-files-generator/auto-generate-permissionsets-mapping-files.py` file to the S3 Bucket and run the build project to generate permission sets and mapping files before pushing code to your source code repository. The name of the S3 Bucket and the Build Project can be found in Outputs section of the stack once the codepipeline-stack.template is deployed successfully.
+    - *GeneratePermissionSetsAndMappings*: Set to true if you want to deploy a separate build project to generate permission sets and mapping JSON files, ONLY if you are already using Identity Center and would like to import existing permission sets and assignments into this solution. Please note that you must manually upload `src/automation-code/permission-set-and-mapping-files-generator/auto-generate-permissionsets-mapping-files.py` file to the S3 Bucket to trigger the build project that generates permission sets and mapping files before pushing code to your source code repository. The name of the S3 Bucket and the Build Project can be found in Outputs section of the stack once the codepipeline-stack.template is deployed successfully.
     - *ICInstanceARN*: Required when GeneratePermissionSetsAndMappings is set to true. ICInstanceARN can be found on the AWS IAM Identity Center console 'Settings' page.
     - *IdentityStoreId*: Required when GeneratePermissionSetsAndMappings is set to true. Identity Store ID can be found on the AWS IAM Identity Center console 'Settings' page.
     - *AutomationBuildProjectName*: Specify the name for the automation CodeBuild projects or leave default.
@@ -163,47 +169,53 @@ This also recommended as a best practice:
     - *RepositoryName*: The name of the repository (full name of repository with path for CodeStarConnection; repository name for AWS CodeCommit).
     - *RepoBranch*: The name of branch that will trigger the CodePipeline run. Default is 'main'.
     - *SNSPipelineApprovalEmail*: The email that will receive and approve pipeline approval notifications.
-6. (Optional) If you set *GeneratePermissionSetsAndMappings* to 'true', upload the *src/automation-code/permission-set-and-mapping-files-generator/auto-generate-permissionsets-mapping-files.py* file to the root of the S3 bucket (uckent name starts with 'icpermsetmapping'). Once uploaded, navigate to CodeBuild > Build Projects > IC-GeneratePermissionSetsAndMappingFiles and hit Start Build. This will read your existing Identity Center configuration and generate a *identity-center-mapping-info* folder with necessary files in the S3 Bucket.
+6. (Optional) If you set *GeneratePermissionSetsAndMappings* to 'true', upload the *src/automation-code/permission-set-and-mapping-files-generator/auto-generate-permissionsets-mapping-files.py* file to the root of the S3 bucket (uckent name starts with 'icpermsetmapping'). Once uploaded, an EventBridge Rule will automatically trigger the CodeBuild Project to generate necessary JSON files and directory structure. You can navigate to CodeBuild > Build Projects > IC-GeneratePermissionSetsAndMappingFiles to check the status of the build. This will read your existing Identity Center configuration and generate a *identity-center-mapping-info* folder with necessary files in the S3 Bucket, which you can use in the next step before running the automation.
 7. Create your own permission sets json defination files as well as the account assignment defination file "global-mapping.json" and "target-mapping.json". Note, if you chose to perform the optional Step 6 above, the existing permission sets and mapping files will be in the S3 bucket. You can replace the files in *identity-center-mapping-info* folder in this repository with the one generated in the S3 bucket.
 8. Push the following files to your git repository, e.g. Linux tree structure:
 ```
+├── CHANGELOG.md
+├── CODE_OF_CONDUCT.md
+├── CONTRIBUTING.md
 ├── LICENSE
 ├── README.md
-├── codepipeline-stack.template
-├── delegate-admin
-│   ├── IC-Delegate-Admin.template
-│   └── IC_delegate_admin_main.py
 ├── diagram
 │   └── architecture_diagram.png
-├── identity-center-automation.template
 ├── identity-center-mapping-info
 │   ├── global-mapping.json
 │   ├── permission-sets
-│   │   ├── example-1.json
-│   │   ├── example-2.json
-│   │   ├── example-3.json
-│   │   ├── ...
-│   │   └── example-99.json
+│   │   ├── 1-example-admin.json
+│   │   ├── 2-example-readonly.json
+│   │   ├── 3-example-billing.json
+│   │   ├── 4-example-operations.json
+│   │   ├── 5-example-sec-readonly.json
+│   │   ├── 6-example-cx-managed-policy-boundary.json
+│   │   └── 7-example-aws-managed-policy-boundary.json
 │   └── target-mapping.json
-├── identity-center-s3-bucket.template
 ├── identity-center-stacks-parameters.json
-└── src
-    ├── automation-code
-    │   ├── identity-center-auto-assign
-    │   │   ├── auto-assignment.py
-    │   │   └── cfnresponse.py
-    │   ├── identity-center-auto-permissionsets
-    │   │   ├── auto-permissionsets.py
-    │   │   └── cfnresponse.py
-    │   └── permission-set-and-mapping-files-generator
-    │       └── auto-generate-permissionsets-mapping-files.py
-    ├── codebuild
-    │   ├── buildspec-mapping.yml
-    │   ├── buildspec-param.yml
-    │   ├── buildspec-validation.yml
-    │   └── buildspec-zipfiles.yml
-    └── validation
-        └── syntax-validator.py
+├── src
+│   ├── automation-code
+│   │   ├── identity-center-auto-assign
+│   │   │   ├── auto-assignment.py
+│   │   │   └── cfnresponse.py
+│   │   ├── identity-center-auto-permissionsets
+│   │   │   ├── auto-permissionsets.py
+│   │   │   └── cfnresponse.py
+│   │   └── permission-set-and-mapping-files-generator
+│   │       └── auto-generate-permissionsets-mapping-files.py
+│   ├── codebuild
+│   │   ├── buildspec-mapping.yml
+│   │   ├── buildspec-param.yml
+│   │   ├── buildspec-validation.yml
+│   │   └── buildspec-zipfiles.yml
+│   └── validation
+│       └── syntax-validator.py
+└── templates
+    ├── codepipeline-stack.template
+    ├── delegate-admin
+    │   ├── IC-Delegate-Admin.template
+    │   └── IC_delegate_admin_main.py
+    ├── identity-center-automation.template
+    └── identity-center-s3-bucket.template
 ```
 9. The pipeline will automatically create 2 new CloudFormation stacks *IdentityCenter-S3-Bucket-Stack* and *IdentityCenter-Automation-Stack* in your account and upload your permission sets and mapping files to a centralized S3 bucket. The non-default parameters are specified in identity-center-stacks-parameters.json file.
 10. The 'ReviewAndExecute' stage needs manual approval before the Pipeline invoke the CodeBuild Project. Once the pipeline is completed, verify the permission sets and account mapping on the AWS IAM Identity Center service console.
@@ -215,6 +227,178 @@ This also recommended as a best practice:
 ### Architecture Diagram
 
   ![Image of Identity_Center_Solution_Diagram](diagram/architecture_diagram.png) 
+
+### 1. Permission Set JSON file structure and example
+
+Note:
+1. Only use the "CustomerPolicies" object in the definition file if you need to apply customer managed policy to your permission set. When you create a permission the set with a customer managed policy, you MUST create an IAM policy with the same name and path in each AWS account where IAM Identity Center assigns your permission set FIRST before attaching it to the permission set. If you are specifying a custom path, make sure to specify the same path in each AWS account.
+2. Only use the "PermissionBoundary" object in the definition file if you need to apply customer managed policy as a permissions boundary to your permission set. When you create a permission the set with a permissions boundary, you MUST create an IAM policy with the same name and path in each AWS account where IAM Identity Center assigns your permission set FIRST before attaching it to the permission set. If you are specifying a custom path, make sure to specify the same path in each AWS account.
+3. You can apply custom permission set *session duration* for selected permission by adding "Session_Duration" in the mapping file (e.g 1-example-admin). You can set your own default permission set "SessionDuration" in the identity-center-automation.template or using identity-center-stacks-parameters.json file, current default value is 1 hour.
+
+#### 1.1 Valid Permission Set JSON structure
+
+```
+    required_keys = {
+        "Name": str,
+        "Description": str
+    }
+
+    optional_keys = {
+        "Tags": list,
+        "ManagedPolicies": list,
+        "InlinePolicies": (list, dict),
+        "CustomerPolicies": list,
+        "Session_Duration": str,
+        "PermissionsBoundary": dict
+    }
+```
+
+#### 1.2 Example of valid permission set
+
+```
+    {
+    "Name": "example-admin",
+    "Description": "Admin access",
+    "Session_Duration": "PT12H",
+    "Tags": [
+        {
+            "Key": "env",
+            "Value": "prod"
+        },
+        {
+            "Key": "identity-center-solution",
+            "Value": "example"
+        }
+    ],
+    "ManagedPolicies": [
+        {
+            "Name": "AdministratorAccess",
+            "Arn": "arn:aws:iam::aws:policy/AdministratorAccess"
+        }
+    ],
+    "CustomerPolicies": [
+        {
+            "Name": "customer-managed-policy-1",
+            "Path": "/IAM-path-example/"
+        },
+        {
+            "Name": "customer-managed-policy-2",
+            "Path": "/"
+        }
+    ],
+    "InlinePolicies": [
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "BillingReader",
+                    "Effect": "Allow",
+                    "Action": "budgets:ViewBudget",
+                    "Resource": "*"
+                },
+                {
+                    "Sid": "APIAccess",
+                    "Effect": "Allow",
+                    "Action": "apigateway:GET",
+                    "Resource": "arn:aws:apigateway:us-west-2::/apis"
+                }
+            ]
+        }
+    ],
+    "PermissionsBoundary": {
+        "Name": "testPermissionBoundary",
+        "Path": "/"
+        }
+    }   
+```
+
+### 2. Mapping files JSON structure and example
+
+#### 2.1 Valid Global Mapping JSON structure
+
+```
+    required_keys = {
+        "GlobalGroupName": str,
+        "PermissionSetName": list[str]
+        "TargetAccountid": str
+    }
+```
+
+#### 2.2 Example of global mapping file
+```
+[
+    {
+        "GlobalGroupName": "Example_1-global-admin",
+        "PermissionSetName": [
+            "1-example-admin"
+        ],
+        "TargetAccountid": "Global"
+    },
+    {
+        "GlobalGroupName": "Example_2-global-reader",
+        "PermissionSetName": [
+            "2-example-readonly",
+            "example-viewonly"
+        ],
+        "TargetAccountid": "Global"
+    },
+]
+```
+#### 2.3 Valid Target Mapping JSON structure
+
+```
+    required_keys = {
+        "GlobalGroupName": str,
+        "PermissionSetName": list[str]
+        "TargetAccountid": list[str]
+    }
+```
+
+#### 2.4 Example of target mapping file
+
+Note: You can specify a 12-digit account ID, account name, or Organization Unit (OU) name (including nested OUs) as targets for permission set assignment. For account Id, you can specify a 12-digit account ID directly, for account name, use 'name:' prefix, and for OU name, use 'ou:' prefix.
+
+```
+[
+    {
+        "TargetGroupName": "Example_8-splunk-admin",
+        "PermissionSetName": [
+            "ops-enterprisemonitoring"
+        ],
+        "TargetAccountid": [
+            "123456789012"
+        ]
+    },
+    {
+        "TargetGroupName": "Example_9-Data-user",
+        "PermissionSetName": [
+            "data-end-user",
+            "db-read-write"
+        ],
+        "TargetAccountid": [
+            "111111111111",
+            "123456789012",
+            "name:Audit",
+            "name:ProdAccount",
+            "ou:Infrastructure",
+            "ou:Development"
+        ]
+    },
+    {
+        "TargetGroupName": "Example_10-network-engineering",
+        "PermissionSetName": [
+            "10-ops-networking",
+            "ops-enterprisemonitorin"
+        ],
+        "TargetAccountid": [
+            "123456789012",
+            "111111111111",
+            "222222222222",
+            "333333333333"
+        ]
+    }
+]
+```
 
 ### This solution covers the following scenarios:
 - If any change had been made through another approach without updating JSON mapping files in the source, such as deleting a permission set, will this solution be able to detect and fix those drifts?
@@ -257,7 +441,7 @@ This also recommended as a best practice:
     Additionally, the CodeBuild Project tracks and uses versioned objects in S3 to ensure integrity and prevent manual manipulation of configuration files.
 
 ### (Optional) Detect the manual modifications to the IAM Identity Center to trigger immediate baseline actions.
-- There are 2 optional AWS event rules in the identity-center-automation.template:
+- There are 2 optional AWS event rules in the templates/identity-center-automation.template:
 
     - ICManualActionDetectionRule1
       - Monitor the APIs from source 'sso.amazonaws.com'
@@ -348,110 +532,6 @@ Note - Events initiated from source 'sso-directory.amazonaws.com' will not be re
 ### ICAutomationAdmin Role was used to make a manual change to Identity Center without triggering the manual revert, in an event of an incident when waiting for the pipeline execution was not feasible.
 - The ICScheduledRuleBaselining EventBridge Rule is configured to run every 12 hours to baseline permissions automatically by invoking the automation CodeBuild Project.
 ---
-
-## Examples of mapping files
-1. Example of permission set file (random account ids):
-
-    Note: This solution(version 1.1.0 or newer) supports 1)customer managed policy and 2) session duration feature in the permission set definition file:
-    1. Only use the "CustomerPolicies" object in the definition file if you need to apply customer managed policy to your permission set. When you create a permission the set with a customer managed policy, you MUST create an IAM policy with the same name and path in each AWS account where IAM Identity Center assigns your permission set. If you are specifying a custom path, make sure to specify the same path in each AWS account.
-    2. You can apply custom permission set *session duration* for selected permission by adding "Session_Duration" in the mapping file (e.g 1-example-admin). You can set your own default permission set "SessionDuration" in the identity-center-automation.template or using identity-center-stacks-parameters.json file, current default value is 1 hour.
-        - To change the "Session_Duration" on existing permission set:
-            - Option 1) Recreate the permission set using CICD pipeline
-            - Option 2) Update the both  "Session_Duration" and "Description" section in the definition file and re-run the pipeline.
-
-```
-
-{
-    "Name": "1-example-admin",
-    "Description": "1-example-admin",
-    "Session_Duration": "PT12H",
-    "Tags": [
-        {
-            "Key": "identity-center-solution",
-            "Value": "example"
-        }
-    ],
-    "ManagedPolicies": [
-        {
-            "Name": "AdministratorAccess",
-            "Arn": "arn:aws:iam::aws:policy/AdministratorAccess"
-        }
-    ],
-    "CustomerPolicies": [
-        {
-            "Name": "customer-managed-policy-1",
-            "Path": "/IAM-path-example/"
-        },
-        {
-            "Name": "customer-managed-policy-2",
-            "Path": "/"
-        }
-    ],
-    "InlinePolicies": []
-}
-
-```
-2. Example of global mapping file:
-```
-[
-    {
-        "GlobalGroupName": "Example_1-global-admin",
-        "PermissionSetName": [
-            "1-example-admin"
-        ],
-        "TargetAccountid": "Global"
-    },
-    {
-        "GlobalGroupName": "Example_2-global-reader",
-        "PermissionSetName": [
-            "2-example-readonly"
-        ],
-        "TargetAccountid": "Global"
-    },
-]
-```
-3. Example of target mapping file:
-```
-[
-    {
-        "TargetGroupName": "Example_8-splunk-admin",
-        "PermissionSetName": [
-            "ops-enterprisemonitoring"
-        ],
-        "TargetAccountid": [
-            "123456789012"
-        ]
-    },
-    {
-            "TargetGroupName": "Example_9-Data-user",
-            "PermissionSetName": [
-                "data-end-user",
-                "db-read-write"
-                ],
-            "TargetAccountid": [
-                "111111111111",
-                "123456789012"
-                "name:Audit",
-                "name:ProdAccount",
-                "ou:Infrastructure",
-                "ou:Development"
-            ]
-        },
-	  {
-        "TargetGroupName": "Example_10-network-engineering",
-        "PermissionSetName": [
-            "10-ops-networking",
-            "ops-enterprisemonitorin"
-        ],
-        "TargetAccountid": [
-            "123456789012",
-			"111111111111",
-			"222222222222",
-			"333333333333"
-        ]
-    }
-]
-```
 
 ## Cleanup Steps
 - **Tearing down Identity Center resources could interrupt your access to AWS accounts.** Please make sure you have other IAM roles or users to login the accounts. The following steps will only remove the resources that provisioned by this solution. You will need to manually remove other permission sets or SIdentity CenterSO assigments that are created outside this automation.

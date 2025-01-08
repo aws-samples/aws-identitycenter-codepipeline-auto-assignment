@@ -16,6 +16,5 @@
             "Name": "SecurityAudit",
             "Arn": "arn:aws:iam::aws:policy/SecurityAudit"
         }
-    ],
-    "InlinePolicies": []
+    ]
 }

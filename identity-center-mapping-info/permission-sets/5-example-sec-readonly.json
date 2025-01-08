@@ -30,6 +30,5 @@
             "Name": "customer-managed-policy-2",
             "Path": "/"
         }
-    ], 
-    "InlinePolicies": []
+    ]
 }

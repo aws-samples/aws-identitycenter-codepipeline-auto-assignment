@@ -27,10 +27,10 @@ phases:
       - ls -lah
       # CFN Template Linting and Security Scans 
       - echo "Start scanning CloudFormation templates using cfn-nag Tool......."
-      - cfn_nag_scan --input-path codepipeline-stack.template
-      - cfn_nag_scan --input-path delegate-admin/IC-Delegate-Admin.template
-      - cfn_nag_scan --input-path identity-center-s3-bucket.template
-      - cfn_nag_scan --input-path identity-center-s3-bucket.template
+      - cfn_nag_scan --input-path templates/codepipeline-stack.template
+      - cfn_nag_scan --input-path templates/delegate-admin/IC-Delegate-Admin.template
+      - cfn_nag_scan --input-path templates/identity-center-s3-bucket.template
+      - cfn_nag_scan --input-path templates/identity-center-automation.template
 
 artifacts:
   files:

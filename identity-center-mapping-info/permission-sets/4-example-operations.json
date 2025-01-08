@@ -32,6 +32,17 @@
                     "kms:DescribeKey"
                 ],
                 "Resource": "*"
+            },
+            {
+                "Sid": "Statement2",
+                "Effect": "Allow",
+                "Action": [
+                    "apigateway:GET",
+                    "apigateway:DELETE"
+                ],
+                "Resource": [
+                    "arn:aws:apigateway:us-west-2::/apis"
+                ]
             }
         ]
     }

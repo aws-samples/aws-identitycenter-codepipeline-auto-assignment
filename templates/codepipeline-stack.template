@@ -60,12 +60,59 @@ Resources:
     DeletionPolicy: Retain
     Properties:
       BucketName: !Sub icpermsetmapping-${AWS::AccountId}-${AWS::Region}
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+
+  MappingFilesS3BucketEventRule:
+    Type: AWS::Events::Rule
+    Condition: CreateMappingGeneratorProject
+    Properties:
+      Description: "Rule to trigger CodeBuild project when auto-generate-permissionsets-mapping-files.py is uploaded"
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - "Object Created"
+        detail:
+          bucket:
+            name:
+              - !Ref MappingFilesS3Bucket
+          object:
+            key:
+              - "auto-generate-permissionsets-mapping-files.py"
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt GenerateMappingCodeBuildProject.Arn
+          Id: "TriggerCodeBuildProject"
+          RoleArn: !GetAtt EventBridgeCodeBuildRole.Arn
+
+  EventBridgeCodeBuildRole:
+    Type: AWS::IAM::Role
+    Condition: CreateMappingGeneratorProject
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StartCodeBuildProject
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                Resource: !GetAtt GenerateMappingCodeBuildProject.Arn
 
   MappingCodeBuildServiceRole:
     Type: 'AWS::IAM::Role'
@@ -112,13 +159,15 @@ Resources:
                   - "sso:ListPermissionSets"
                   - "sso:ListPermissionSetsProvisionedToAccount"
                   - "sso:ListTagsForResource"
-                  - "sso:DescribePermissionSet"
-                  - "sso:ListAccountAssignments"
-                  - "sso:ListPermissionSets"
-                  - "sso:ListTagsForResource"
-                  - "sso:ListAccountsForProvisionedPermissionSet"
                   - "identitystore:DescribeGroup"
                   - "organizations:ListAccounts"
+                  - "organizations:ListRoots"
+                  - "identitystore:ListGroups"
+                  - "identitystore:GetGroupId"
+                  - "iam:GetRole"
+                  - "iam:GetSAMLProvider"
+                  - "iam:ListAttachedRolePolicies"
+                  - "iam:ListRolePolicies"
                 Resource: '*'
               - Effect: Allow
                 Action:
@@ -126,6 +175,19 @@ Resources:
                   - 'logs:CreateLogStream'
                   - 'logs:PutLogEvents'
                 Resource: '*'
+              - Sid: OrganizationsActions
+                Effect: Allow
+                Action:
+                  - "organizations:ListAccountsForParent"
+                  - "organizations:DescribeAccount"
+                  - "organizations:ListChildren"
+                  - "organizations:ListOrganizationalUnitsForParent"
+                  - "organizations:ListParents"
+                  - "organizations:DescribeOrganizationalUnit"
+                Resource:
+                  - !Sub "arn:aws:organizations::${AWS::AccountId}:ou/o-*/ou-*"
+                  - !Sub "arn:aws:organizations::${AWS::AccountId}:account/o-*/*"
+                  - !Sub "arn:aws:organizations::${AWS::AccountId}:root/o-*/r-*"
   GenerateMappingCodeBuildProject:
     Type: 'AWS::CodeBuild::Project'
     Condition: CreateMappingGeneratorProject
@@ -363,7 +425,7 @@ Resources:
                 StackName: IdentityCenter-S3-Bucket-Stack
                 Capabilities: CAPABILITY_IAM
                 TemplateConfiguration: UpdatedSourceArtifacts::ic-s3-parameters.json
-                TemplatePath: UpdatedSourceArtifacts::identity-center-s3-bucket.template
+                TemplatePath: UpdatedSourceArtifacts::templates/identity-center-s3-bucket.template
                 RoleArn: !GetAtt CodeBuildRole.Arn
               InputArtifacts:
                 - Name: UpdatedSourceArtifacts
@@ -397,7 +459,7 @@ Resources:
                 Capabilities: 'CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND'
                 ParameterOverrides: !Sub '{"AutomationBuildProjectName": "${AutomationBuildProjectName}"}'
                 TemplateConfiguration: UpdatedSourceArtifactsWithObjectVersion::ic-automation-parameters.json
-                TemplatePath: UpdatedSourceArtifactsWithObjectVersion::identity-center-automation.template
+                TemplatePath: UpdatedSourceArtifactsWithObjectVersion::templates/identity-center-automation.template
                 RoleArn: !GetAtt CodeBuildRole.Arn
               RunOrder: 1
             - Name: SyncMappingFiles

@@ -10,13 +10,12 @@
     ],
     "ManagedPolicies": [
         {
-            "Name": "ViewOnlyAccess",
-            "Arn": "arn:aws:iam::aws:policy/job-function/ViewOnlyAccess"
+            "Name": "PowerUserAccess",
+            "Arn": "arn:aws:iam::aws:policy/PowerUserAccess"
         }
     ],
-    "InlinePolicies": [],
     "PermissionsBoundary": {
-        "Name": "PowerUserAccess",
-        "Arn": "arn:aws:iam::aws:policy/PowerUserAccess"
+        "Name": "ViewOnlyAccess",
+        "Arn": "arn:aws:iam::aws:policy/job-function/ViewOnlyAccess"
     }
 }

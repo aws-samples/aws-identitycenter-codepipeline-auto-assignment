@@ -14,9 +14,8 @@
             "Arn": "arn:aws:iam::aws:policy/job-function/ViewOnlyAccess"
         }
     ],
-    "InlinePolicies": [],
     "PermissionsBoundary": {
-        "Name": "example-customer-managed-policy",
-        "Path": "/custom/"
+        "Name": "testPermissionBoundary",
+        "Path": "/"
     }
 }
