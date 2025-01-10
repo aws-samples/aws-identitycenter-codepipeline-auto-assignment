@@ -8,7 +8,7 @@ phases:
       - apt-get install jq
   build:
     commands:
-      - echo "Sync lambda code to S3 bucket"
+      - echo "Sync source code to S3 bucket"
       - pwd
       - ls -lah
       #Build source code Zip file with no folder structure
