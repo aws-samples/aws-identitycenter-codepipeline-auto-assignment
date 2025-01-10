@@ -215,11 +215,10 @@ def validate_account_id(account_id: str) -> bool:
     """
     if account_id == "Global":
         return True
-    if account_id.startswith('0'):
-        return False
     if account_id.startswith('name:') or account_id.startswith('ou:'):
         return True
-    return bool(re.match(r'^[1-9]\d{11}$', account_id))
+    return bool(re.match(r'^\d{12}$', account_id))
+    # return bool(re.match(r'^[1-9]\d{11}$', account_id))
 
 
 def validate_permission_set_name(name: str) -> bool:
@@ -537,12 +536,12 @@ def validate_mapping_file_structure(permission_set_file, group_type, errors):
         elif isinstance(permission_set["TargetAccountid"], str):
             if not validate_account_id(permission_set["TargetAccountid"]):
                 log_and_append_error(
-                    f"Invalid TargetAccountid '{permission_set['TargetAccountid']}' at index {idx}. Must be 12 digits or 'Global'", errors)
+                    f"Invalid TargetAccountid '{permission_set['TargetAccountid']}' at index {idx}. Must be a list with 12 digit account Id, account name with 'name:' prefix, and OU name with 'ou:' prefix, for target mapping, or 'Global' string for global mapping", errors)
         elif isinstance(permission_set["TargetAccountid"], list):
             for account_id in permission_set["TargetAccountid"]:
                 if not validate_account_id(account_id):
                     log_and_append_error(
-                        f"Invalid TargetAccountid '{account_id}' at index {idx}. Must be 12 digits or 'Global'", errors)
+                        f"Invalid TargetAccountid '{account_id}' at index {idx}. Must be a list with 12 digit account Id, account name with 'name:' prefix, and OU name with 'ou:' prefix, for target mapping, or 'Global' string for global mapping", errors)
 
         if "PermissionSetName" in permission_set:
             if not all(isinstance(item, str) for item in permission_set["PermissionSetName"]):
