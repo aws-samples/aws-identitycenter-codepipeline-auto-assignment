@@ -183,7 +183,7 @@ def get_all_permission_sets():
                     'Description', '-')
             except Exception as error:
                 error_message = f'Failed to get description for permission set {perm_set_arn}. Error: {error}'
-                log_and_append_error(error_message)
+                logger.warning(error_message)
                 description = 'Error retrieving description'
             perm_set_name = describe_perm_set['PermissionSet']['Name']
             perm_set_arn = describe_perm_set['PermissionSet']['PermissionSetArn']
@@ -266,7 +266,7 @@ def get_all_permission_sets_if_delegate():
                 description = describe_perm_set['PermissionSet']['Description']
             except Exception as error:
                 error_message = f'Failed to get description for permission set {perm_set_arn}. Error: {error}'
-                log_and_append_error(error_message)
+                logger.warning(error_message)
             perm_set_name = describe_perm_set['PermissionSet']['Name']
             perm_set_arn = describe_perm_set['PermissionSet']['PermissionSetArn']
             list_accounts_for_provisioned_perm_set = ic_admin.list_accounts_for_provisioned_permission_set(
