@@ -1,5 +1,5 @@
 {
-    "Name": "7-example-aws-managed-policy-boundary",
+    "Name": "7-example-aws-managed-boundary",
     "Description": "Example permission set with AWS managed boundary policy",
     "Session_Duration": "PT12H",
     "Tags": [
