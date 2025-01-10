@@ -533,6 +533,10 @@ Note - Events initiated from source 'sso-directory.amazonaws.com' will not be re
 - The ICScheduledRuleBaselining EventBridge Rule is configured to run every 12 hours to baseline permissions automatically by invoking the automation CodeBuild Project.
 ---
 
+## Updating the solution
+
+[TODO]
+
 ## Cleanup Steps
 - **Tearing down Identity Center resources could interrupt your access to AWS accounts.** Please make sure you have other IAM roles or users to login the accounts. The following steps will only remove the resources that provisioned by this solution. You will need to manually remove other permission sets or SIdentity CenterSO assigments that are created outside this automation.
     1. Replace all the mapping information with an empty list "[]" in  global-mapping.json and target-mapping.json files.
