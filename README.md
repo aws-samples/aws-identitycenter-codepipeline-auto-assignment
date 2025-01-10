@@ -6,6 +6,8 @@ AWS IAM Identity Center (successor to AWS Single Sign-On) provides account assig
 
 AWS IAM Identity Center requires the [AWS Organizations service](https://console.aws.amazon.com/organizations) enabled in your AWS account.
 
+This solution is based on the AWS Blog - [Manage permission sets and account assignments in AWS IAM Identity Center with a CI/CD pipeline](https://aws.amazon.com/blogs/infrastructure-and-automation/manage-permission-sets-and-account-assignments-in-aws-iam-identity-center-with-a-ci-cd-pipeline/)
+
 ## What this solution is
  - Use AWS CodeCommit or another git repository to securely source control your own IAM Identity Center code repository. Utilize CodePipeline to create and update CloudFormation stacks of IAM Identity Center and other AWS services.
     - The AWS CodePipeline will first deploy CloudFormation stacks to create a security S3 bucket, automation Codebuild Projects and other AWS resources.
@@ -14,7 +16,7 @@ AWS IAM Identity Center requires the [AWS Organizations service](https://console
     - Pipeline invokes the CodeBuild Project to create IAM Identity Center resources by referring the JSON files in the s3 bucket and your repository.
     - Pipeline sends you approval emails to Reject or Approve changes to Identity Center.
     - Amazon EventBridge triggers email notifications via Amazon Simple Notification Service (SNS) on manual changes to Identity Center or in case of account changes in AWS Organizations and invokes CodeBuild Project to remove manual changes and revert back to baseline configuration.
-- **This solution works with both Control Tower and non Control Tower based landing zones.**
+- **This solution works with both Control Tower and non Control Tower (AWS Organizations) based landing zones.**
 
 ## Solution Implementation Instructions
 
@@ -58,7 +60,8 @@ This also recommended as a best practice:
 >Create permission sets for use only in the management account – This makes it easier to administer permission sets tailored just for users accessing your management account and helps to differentiate them from permission sets managed by your delegated administrator account.
 
 **If you have already delegated an AWS account as administrator for Identity Center, follow the steps listed under *Deployment in delegated administrator account* section below. If you have not delegated an AWS account as administrator for Identity Center yet, perform the following steps to delegate a member account as an administrator for Identity Center:**
-1. Clone this repository. cd into the repository root directory.
+1. Clone/fork this repository. cd into the repository root directory.
+2. Navigate to templates/delegate-admin/, where you will find the IC-Delegate-Admin.template CloudFormation template.
 2. In the Organization Management account, create a stack in AWS CloudFormation console at https://console.aws.amazon.com/cloudformation.
 3. On the Specify stack details page, type a stack name in the Stack name box. You can choose any name, such as, *delegate-IC-admin*.
 4. In the Parameters section, specify the following parameters:
@@ -68,7 +71,7 @@ This also recommended as a best practice:
 6. Once the CloudFormation stack is created successfully, follow the steps under Deployment section below.
 
 #### Deployment in delegated administrator account
-1. Clone this repository. cd into the repository root directory.
+1. Clone/fork this repository. cd into the repository root directory.
 2. Create an AWS CodeCommit repository or a [CodeStar connection](https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-create.html) to connect to your git repository. The AWS CodeCommit repository or the CodeStar Connection must exist prior to deploying codepipeline-stack.template in next step.
     - If you chose CodeCommit, the name of CodeCommit repository will be used when we create pipeline with codepipeline-stack.template.
     - If you created a CodeStar Connection, the full connection ARN of the CodeStar Connection will be used when we create pipeline with codepipeline-stack.template.
@@ -145,7 +148,7 @@ This also recommended as a best practice:
 
 
 ### How to implement this solution in Organization Management account:
-1. Clone this repository. cd into the repository root directory.
+1. Clone/fork this repository. cd into the repository root directory.
 2. Create an AWS CodeCommit repository or a [CodeStar connection](https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-create.html) to connect to your git repository. The AWS CodeCommit repository or the CodeStar Connection must exist prior to deploying codepipeline-stack.template in next step.
     - If you chose CodeCommit, the name of CodeCommit repository will be used when we create pipeline with codepipeline-stack.template.
     - If you created a CodeStar Connection, the full connection ARN of the CodeStar Connection will be used when we create pipeline with codepipeline-stack.template.
@@ -533,9 +536,67 @@ Note - Events initiated from source 'sso-directory.amazonaws.com' will not be re
 - The ICScheduledRuleBaselining EventBridge Rule is configured to run every 12 hours to baseline permissions automatically by invoking the automation CodeBuild Project.
 ---
 
-## Updating the solution
+## Downloading and keeping the solution up-to-date
 
-[TODO]
+You can either clone or fork this repository and maintain an upstream connection with this repository to fetch the latest updates. 
+
+### If you fork the repository
+
+1. Forking will create a copy this repository under your GitHub account or organization. clone your fork to your local environment:
+``` git clone <your-fork-repositiry-url> ```
+2. cd aws-identitycenter-codepipeline-auto-assignment
+3. Add this upstream repository as a remote:
+``` git remote add upstream git@github.com:aws-samples/aws-identitycenter-codepipeline-auto-assignment.git ```
+4. Verify the remotes:
+``` git remote -v ```
+The output should show "origin" and "upstream". Where "origin" is the remote to your fork and "upstream" is the remote to this repository. 
+5. Here you can follow the implementation steps and customize the identity-center-stack-parameters.json and JSON files within identity-center-mapping-info directory to specific to your environment.
+6. You can then add and commit your changes to your local before pushing it to your fork:
+``` git add . && git commit -m "Updating parameters, permission sets and mapping files" ```
+7. Push your changes to your fork to trigger the pipeline:
+``` git push origin <yourBranch> ```
+
+### If you clone the repository
+
+In scenarios where fork is not possible, for example when you or your organization may be using a different Git provider, you must clone the repository, create a new repository in your git provider and add it as a remote to the cloned repository. 
+
+1. Clone this repository, cd into the root of the local clone:
+``` 
+git clone git@github.com:aws-samples/aws-identitycenter-codepipeline-auto-assignment.git 
+cd aws-identitycenter-codepipeline-auto-assignment
+```
+2. For consistancy, rename the remote for this repository to "upstream":
+``` git remote rename origin upstream ```
+3. Create a new empty repository on your git provider. 
+4. Add your repository as a remote to the local clone:
+``` git remote add origin <yourRepositoryUrl> ```
+5. Verify the remotes:
+``` git remote -v ```
+The output should show "origin" and "upstream". Where "origin" is the remote to your repository and "upstream" is the remote to this repository. 
+6. Push all branches and tags to your repository:
+``` 
+git push origin --all
+git push origin --tags
+```
+7. Here you can follow the implementation steps and customize the identity-center-stack-parameters.json and JSON files within identity-center-mapping-info directory to specific to your environment.
+8. You can then add and commit your changes to your local before pushing it to your git repository:
+``` git add . && git commit -m "Updating parameters, permission sets and mapping files" ```
+9. Push your changes to your repository to trigger the pipeline:
+``` git push origin <yourBranch> ```
+
+You can then continue to use your fork/clone to maintain the solution in your repository and, to manage permission sets and assignments. 
+
+When you need to get the updates as there may be any new releases to this project, you can follow the steps below:
+1. Fetch changes from "upstream" (this repository)
+``` git fetch upstream ```
+2. Merge changes from this repository into your local environment:
+```
+git checkout <yourBranch>
+git merge upstream/main
+```
+3. Resolve any merge conflicts if ther are any, while keeping your specific configuration in 'identity-center-stacks-parameters.json' file and 'identity-center-mapping-info/' directory, and push the changes to your repository to trigger the pipeline with latest source code (while keeping your specific configuration):
+``` git push origin <yourBranch> ```
+
 
 ## Cleanup Steps
 - **Tearing down Identity Center resources could interrupt your access to AWS accounts.** Please make sure you have other IAM roles or users to login the accounts. The following steps will only remove the resources that provisioned by this solution. You will need to manually remove other permission sets or SIdentity CenterSO assigments that are created outside this automation.
