@@ -60,7 +60,7 @@ This also recommended as a best practice:
 >Create permission sets for use only in the management account – This makes it easier to administer permission sets tailored just for users accessing your management account and helps to differentiate them from permission sets managed by your delegated administrator account.
 
 **If you have already delegated an AWS account as administrator for Identity Center, follow the steps listed under *Deployment in delegated administrator account* section below. If you have not delegated an AWS account as administrator for Identity Center yet, perform the following steps to delegate a member account as an administrator for Identity Center:**
-1. Clone/fork this repository. cd into the repository root directory.
+1. [Clone/fork](#downloading-and-keeping-the-solution-up-to-date) this repository. cd into the repository root directory.
 2. Navigate to templates/delegate-admin/, where you will find the IC-Delegate-Admin.template CloudFormation template.
 2. In the Organization Management account, create a stack in AWS CloudFormation console at https://console.aws.amazon.com/cloudformation.
 3. On the Specify stack details page, type a stack name in the Stack name box. You can choose any name, such as, *delegate-IC-admin*.
