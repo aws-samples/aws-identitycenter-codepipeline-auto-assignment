@@ -71,7 +71,7 @@ This also recommended as a best practice:
 6. Once the CloudFormation stack is created successfully, follow the steps under Deployment section below.
 
 #### Deployment in delegated administrator account
-1. Clone/fork this repository. cd into the repository root directory.
+1. [Clone/fork](#downloading-and-keeping-the-solution-up-to-date) this repository. cd into the repository root directory.
 2. Create an AWS CodeCommit repository or a [CodeStar connection](https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-create.html) to connect to your git repository. The AWS CodeCommit repository or the CodeStar Connection must exist prior to deploying codepipeline-stack.template in next step.
     - If you chose CodeCommit, the name of CodeCommit repository will be used when we create pipeline with codepipeline-stack.template.
     - If you created a CodeStar Connection, the full connection ARN of the CodeStar Connection will be used when we create pipeline with codepipeline-stack.template.
@@ -148,7 +148,7 @@ This also recommended as a best practice:
 
 
 ### How to implement this solution in Organization Management account:
-1. Clone/fork this repository. cd into the repository root directory.
+1. [Clone/fork](#downloading-and-keeping-the-solution-up-to-date) this repository. cd into the repository root directory.
 2. Create an AWS CodeCommit repository or a [CodeStar connection](https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-create.html) to connect to your git repository. The AWS CodeCommit repository or the CodeStar Connection must exist prior to deploying codepipeline-stack.template in next step.
     - If you chose CodeCommit, the name of CodeCommit repository will be used when we create pipeline with codepipeline-stack.template.
     - If you created a CodeStar Connection, the full connection ARN of the CodeStar Connection will be used when we create pipeline with codepipeline-stack.template.
