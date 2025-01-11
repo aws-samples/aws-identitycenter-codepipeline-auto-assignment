@@ -14,8 +14,8 @@ import watchtower
 
 AWS_CONFIG = Config(
     retries=dict(
-        max_attempts=8,
-        mode='standard'
+        max_attempts=100,
+        mode='adaptive'
     )
 )
 

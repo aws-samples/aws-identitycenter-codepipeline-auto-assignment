@@ -47,8 +47,8 @@ boto_logger.addFilter(RetryFilter())
 
 AWS_CONFIG = Config(
     retries=dict(
-        max_attempts=5,
-        mode='standard'
+        max_attempts=100,
+        mode='adaptive'
     )
 )
 
