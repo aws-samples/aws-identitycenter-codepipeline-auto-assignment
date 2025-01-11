@@ -212,7 +212,7 @@ def get_group_name(group_id, identitystore_client, identity_store_id, group_disp
 
 def get_account_assignments():
     """Get all account assignments and organize them into global and target mappings"""
-    logger.info("Getting all account assignments")
+    logger.info("Getting all account assignments...")
     global_mapping = []
     target_mapping = []
     group_display_names = {}
@@ -270,7 +270,7 @@ def get_account_assignments():
                 logger.warning(
                     f"Warning: Permission set ARN {perm_set_arn} not found in mapping")
                 continue
-            logger.info(f"Processing permission set: {curr_perm_set_name}")
+            logger.info(f"Processing permission set: {curr_perm_set_name}. Please wait...")
 
             # get assignments for each active account
             for account_id in active_account_ids:
@@ -400,6 +400,8 @@ def get_account_assignments():
 
                 def get_all_accounts_in_ou(ou_id):
                     """Get all accounts in an OU and its child OUs"""
+                    logger.info(
+                        f"Getting all accounts in OU {ou_id} and its child OUs, if exists. Please wait...")
                     all_accounts = set()
                     # get accounts
                     paginator = organizations.get_paginator(

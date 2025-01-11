@@ -41,7 +41,7 @@ Parameters:
     Default: ''
   OrgManagementAccount:
     Type: String
-    Description: Account ID of the management account. Used setup permissions for mapping automation project to read account names and OU names.
+    Description: Account ID of the management account. Used for setting up permissions for mapping automation project to read account names and OU names.
   AutomationBuildProjectName:
     Description: The full name of the automation CodeBuild Project.
     Type: String
