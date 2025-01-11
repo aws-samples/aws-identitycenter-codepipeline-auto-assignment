@@ -63,3 +63,115 @@
    - Updated the Identity Center automation pipeline in the codepipeline-stack.template to event-driven pipeline.
       - It is recommended to use event-based change detection for pipelines as opposed to polling for changes.
    - Updated pipeline stage names to better reflect their purpose.
+
+## 3.0.0
+
+### Major Architectural Changes
+   - Replaced Lambda functions with CodeBuild projects for core automation:
+      - Migrated auto-permissionsets.py and auto-assignment.py from Lambda to CodeBuild.
+      - This change allows for longer execution times (no timeout issues), more memory, and easier dependency management.
+   - Implemented CodePipeline V2:
+      - Updated codepipeline-stack.template to use the latest CodePipeline features.
+   - Added support for CodeStar connections:
+      - Allows integration with various source control providers beyond AWS CodeCommit.
+      - Updated codepipeline-stack.template to include CodeStar connection options.
+   - Enhanced S3 bucket management:
+      - Implemented versioning for S3 objects to ensure data integrity and allow rollbacks.
+      - Added option to create a new KMS key for S3 bucket encryption or use an existing key.
+
+### New Features
+   - Syntax validation for permission sets and mapping files:
+      - Added syntax-validator.py to perform comprehensive checks on JSON structures.
+      - Validates permission set names, ARNs, policy structures, and mapping file format and content.
+   - Generation of permission sets and mapping files:
+      - New feature to generate JSON files from existing Identity Center configuration.
+      - Added auto-generate-permissionsets-mapping-files.py to facilitate this process.
+      - Added EventBridge rule to automatically trigger CodeBuild project when auto-generate-permissionsets-mapping-files.py is uploaded to S3, for JSON identity-center-mapping-info files generation.
+   - Support for account names and OU names in target mappings:
+      - Enhanced auto-assignment.py to resolve account names and OUs, including nested OUs, in addition to using just account IDs.
+      - Allows more human-readable and flexible target specifications in mapping files.
+   - Support for permission boundaries:
+      - Added ability to define and manage permission boundaries for permission sets, using both AWS Managed and Customer Managed Policies.
+   - Scheduled baselining of Identity Center configuration:
+      - Added EventBridge rule to periodically (Every 12 hours) trigger the automation process.
+      - Helps maintain desired state even if manual changes are made outside the pipeline.
+   - Improved event-driven triggers:
+      - Updated EventBridge rules to trigger on successful account creation and invitation acceptance.
+      - More precise and efficient handling of organizational changes.
+   - Moved CloudFormation templates to a dedicated templates directory for better organization.
+
+### Enhancements
+   - Error handling and logging improvements:
+      - Implemented more granular error catching and reporting across all scripts.
+      - Added detailed logging for better traceability and debugging.
+      - Enhanced logging with CloudWatch integration into CodeBuild project for better traceability.
+   - Optimized API calls:
+      - Implemented batching and pagination for certain AWS API calls to reduce the risk of throttling.
+   - Handling of suspended accounts and accounts pending closure:
+      - Updated account processing logic to skip accounts in these states.
+      - Prevents unnecessary operations on inactive accounts.
+   - Improved account assignment process:
+      - Enhanced logic for detecting and handling changes in account assignments.
+      - Implemented more efficient provisioning and deprovisioning of permission sets.
+   - Expanded Organizations integration:
+      - Added support for retrieving and working with nested organizational units.
+   - IAM permission refinements:
+      - Implemented least privilege principle more strictly across all IAM roles.
+      - Updated IAM policies in codepipeline-stack.template, identity-center-automation.template, and identity-center-s3-bucket.template.
+      - Updated IAM roles with more granular permissions for CodeBuild, EventBridge, and other AWS services.
+   - Dependency updates:
+      - Upgraded boto3 and other Python dependencies to latest compatible versions.
+   - Improved handling of Control Tower managed permission sets:
+      - Enhanced logic to identify and preserve Control Tower managed resources.
+      - Updated skipping mechanism for these permission sets to prevent unintended modifications.
+   - Performance optimizations:
+      - Implemented batching for certain AWS API calls to reduce the risk of throttling.
+      - Optimized loops and data structures for better efficiency in large-scale environments.
+   - Compatibility checks:
+      - Added checks to ensure backward compatibility with existing deployment structures where possible.
+      - Provided migration guidance for users upgrading from previous versions.
+
+### Bug Fixes
+   - Fixed issues with whitespace handling in permission set and group names.
+   - Corrected validation logic for various fields in permission sets and mapping files.
+   - Addressed potential race conditions in account assignment operations.
+   - Fixed the timeout issue in automation. 
+
+### File and Template Updates
+   - codepipeline-stack.template:
+      - Added parameters for CodeStar connections and source control options.
+      - Updated IAM roles and policies for CodeBuild projects with more granular access.
+      - Implemented new stages for syntax validation.
+      - Added a standalone CodeBuild Project for JSON files generation.
+      - Added EventBridge configuration for S3 bucket.
+      - Created new EventBridge rule to trigger CodeBuild project for auto-generation of mapping files.
+      - Added new IAM role for EventBridge to start CodeBuild projects.
+   - identity-center-automation.template:
+      - Removed Lambda resources and added CodeBuild project configurations.
+      - Updated EventBridge rules to trigger CodeBuild projects instead of Lambda functions.
+      - Added new parameters for CodeBuild project names and artifact bucket.
+      - Updated IAM permissions to include new SSO and Organizations actions.
+      - Added support for new SSO API calls related to permission boundaries and account assignments.
+   - identity-center-s3-bucket.template:
+      - Added options for KMS key creation and management.
+      - Updated bucket policies to reflect new versioning requirements.
+   - buildspec files:
+      - Created new buildspec files for syntax validation, permission set creation, and assignment processes.
+      - Updated existing buildspecs to align with new CodeBuild project structure.
+   - Python scripts:
+      - Significant updates to auto-permissionsets.py and auto-assignment.py to work in CodeBuild environment.
+      - Updated logging statements in all python scrips for better visibility.
+      - Added new validation functions and improved error handling.
+      - Implemented logic to handle account names and OU names in target mappings.
+
+### Documentation Updates
+   - Updated README.md:
+      - Revised architecture diagram to reflect new components and workflows.
+      - Updated implementation instructions for both management account and delegated administrator scenarios.
+      - Added sections explaining new features like syntax validation and file generation.
+      - Added more detailed implementation instructions and examples.
+      - Added new sections explaining new features like auto-generation of files and OU-based assignments.
+      - Improved explanation of permission set, global, and target mapping structure and supported fields, with examples.
+   - Updated example JSON files:
+      - Revised permission set and mapping file examples to showcase new capabilities.
+      - Added examples demonstrating the use of account names and OU names in target mappings, as wel as permission boundaries in permission set files.
