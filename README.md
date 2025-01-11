@@ -76,7 +76,7 @@ This also recommended as a best practice:
     - If you chose CodeCommit, the name of CodeCommit repository will be used when we create pipeline with codepipeline-stack.template.
     - If you created a CodeStar Connection, the full connection ARN of the CodeStar Connection will be used when we create pipeline with codepipeline-stack.template.
 3. Specify parameter values in *identity-center-stacks-parameters.json* file in the repository. Those parameters will be used by the CodePipeline to create other 2 CloudFormation stacks.
-    - The value of *"ICMappingBucketName"* parameter is used by both codepipeline-stack.template and identity-center-stacks-parameters.json.
+    - The value of *"ICMappingBucketName"* parameter is used by both codepipeline-stack.template and identity-center-stacks-parameters.json, must be same.
     - As you've chosen to manage Identity Center in a delegated administrator account, the value of *"AdminDelegated"* must be **true**.
     - If you have Control Tower enabled, change the value of *"ControlTowerEnabled"* to "true", else, keep it "false".
     - If you have an existing IAM role or a user to manage Identity Center without triggering notifications for manual changes, add the ARN of the existing IAM role or user to *"ICAutomationAdminArn"* and change the value of *"createICAdminRole"* to "false". If you do not have an existing IAM role or a user, leave the value of *"ICAutomationAdminArn"* empty '' and change the value of *"createICAdminRole"* to true and the solution will create an IAM role for you.
@@ -95,6 +95,7 @@ This also recommended as a best practice:
     - *RepositoryName*: The name of the repository (full name of repository with path for CodeStarConnection; repository name for AWS CodeCommit).
     - *RepoBranch*: The name of branch that will trigger the CodePipeline run. Default is 'main'.
     - *SNSPipelineApprovalEmail*: The email that will receive and approve pipeline approval notifications.
+    - *OrgManagementAccount*: Account Id of the Organizations management account.
 6. (Optional) If you set *GeneratePermissionSetsAndMappings* to 'true', upload the *src/automation-code/permission-set-and-mapping-files-generator/auto-generate-permissionsets-mapping-files.py* file to the root of the S3 bucket (Bucket name starts with 'icpermsetmapping'). Once uploaded, an EventBridge Rule will automatically trigger the CodeBuild Project to generate necessary JSON files and directory structure. You can navigate to CodeBuild > Build Projects > IC-GeneratePermissionSetsAndMappingFiles to check the status of the build. This will read your existing Identity Center configuration and generate a *identity-center-mapping-info* folder with necessary files in the S3 Bucket, which you can use in the next step before running the automation.
 7. Create your own permission sets json defination files as well as the account assignment defination file "global-mapping.json" and "target-mapping.json". Note, if you chose to perform the optional Step 6 above, the existing permission sets and mapping files will be in the S3 bucket. You can replace the files in *identity-center-mapping-info* folder in this repository with the one generated in the S3 bucket.
 8. Push the following files to your CodeCommit repository, e.g. Linux tree structure:
@@ -153,7 +154,7 @@ This also recommended as a best practice:
     - If you chose CodeCommit, the name of CodeCommit repository will be used when we create pipeline with codepipeline-stack.template.
     - If you created a CodeStar Connection, the full connection ARN of the CodeStar Connection will be used when we create pipeline with codepipeline-stack.template.
 3. Specify parameter values in *identity-center-stacks-parameters.json* file in the repository. Those parameters will be used by the CodePipeline to create other 2 CloudFormation stacks.
-    - The value of *"ICMappingBucketName"* parameter is used by both codepipeline-stack.template and identity-center-stacks-parameters.json.
+    - The value of *"ICMappingBucketName"* parameter is used by both codepipeline-stack.template and identity-center-stacks-parameters.json, must be same.
     - As you've chosen to manage Identity Center in Organization Management account, the value of AdminDelegated must be **false**.
     - If you have Control Tower enabled, change the value of *"ControlTowerEnabled"* to "true", else, keep it "false".
     - If you have an existing IAM role or a user to manage Identity Center without triggering notifications for manual changes, add the ARN of the existing IAM role or user to *"ICAutomationAdminArn"* and change the value of *"createICAdminRole"* to "false". If you do not have an existing IAM role or a user, leave the value of *"ICAutomationAdminArn"* empty '' and change the value of *"createICAdminRole"* to true and the solution will create an IAM role for you.
@@ -172,6 +173,7 @@ This also recommended as a best practice:
     - *RepositoryName*: The name of the repository (full name of repository with path for CodeStarConnection; repository name for AWS CodeCommit).
     - *RepoBranch*: The name of branch that will trigger the CodePipeline run. Default is 'main'.
     - *SNSPipelineApprovalEmail*: The email that will receive and approve pipeline approval notifications.
+    - *OrgManagementAccount*: Account Id of the Organizations management account.
 6. (Optional) If you set *GeneratePermissionSetsAndMappings* to 'true', upload the *src/automation-code/permission-set-and-mapping-files-generator/auto-generate-permissionsets-mapping-files.py* file to the root of the S3 bucket (uckent name starts with 'icpermsetmapping'). Once uploaded, an EventBridge Rule will automatically trigger the CodeBuild Project to generate necessary JSON files and directory structure. You can navigate to CodeBuild > Build Projects > IC-GeneratePermissionSetsAndMappingFiles to check the status of the build. This will read your existing Identity Center configuration and generate a *identity-center-mapping-info* folder with necessary files in the S3 Bucket, which you can use in the next step before running the automation.
 7. Create your own permission sets json defination files as well as the account assignment defination file "global-mapping.json" and "target-mapping.json". Note, if you chose to perform the optional Step 6 above, the existing permission sets and mapping files will be in the S3 bucket. You can replace the files in *identity-center-mapping-info* folder in this repository with the one generated in the S3 bucket.
 8. Push the following files to your git repository, e.g. Linux tree structure:

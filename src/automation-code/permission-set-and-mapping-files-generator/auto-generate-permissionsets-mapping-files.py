@@ -57,6 +57,8 @@ ic_admin = boto3.client(
     'sso-admin', region_name=runtime_region, config=AWS_CONFIG)
 identitystore_client = boto3.client(
     'identitystore', region_name=runtime_region, config=AWS_CONFIG)
+sts_client = boto3.client(
+    'sts', region_name=runtime_region, config=AWS_CONFIG)
 organizations = boto3.client('organizations', config=AWS_CONFIG)
 ic_instance_arn = os.getenv('IC_INSTANCE_ARN')
 identity_store_id = os.getenv('IDENTITY_STORE_ID')
@@ -360,11 +362,26 @@ def get_account_assignments():
                 assigned_accounts_list = sorted(list(assigned_accounts))
                 active_accounts_list = sorted(list(active_account_ids))
 
-                # check if this permission set is global?
-                if assigned_accounts_list == active_accounts_list:
-                    global_perm_sets.append(curr_perm_set_name)
+                # Check if build is running in management account or delegated admin
+                management_account_id = organizations.describe_organization()[
+                    'Organization']['MasterAccountId']
+                is_delegated_admin = sts_client.get_caller_identity()[
+                    'Account'] != management_account_id
+
+                if is_delegated_admin:
+                    # For delegated admin, consider it global if assigned to all accounts except management
+                    non_management_active_accounts = [
+                        acc for acc in active_accounts_list if acc != management_account_id]
+                    if sorted(assigned_accounts_list) == sorted(non_management_active_accounts):
+                        global_perm_sets.append(curr_perm_set_name)
+                    else:
+                        target_perm_sets[curr_perm_set_name] = assigned_accounts_list
                 else:
-                    target_perm_sets[curr_perm_set_name] = assigned_accounts_list
+                    # For management account, must be assigned to all accounts to be global
+                    if assigned_accounts_list == active_accounts_list:
+                        global_perm_sets.append(curr_perm_set_name)
+                    else:
+                        target_perm_sets[curr_perm_set_name] = assigned_accounts_list
 
         # Add to global mapping if there are any global permission sets
             if global_perm_sets:

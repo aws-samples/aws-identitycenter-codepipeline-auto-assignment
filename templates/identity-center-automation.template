@@ -227,7 +227,7 @@ Resources:
                   fi
                 - 'echo "Exiting build with final exit code: $EXIT_CODE"'
                 - exit $EXIT_CODE
-      TimeoutInMinutes: 60
+      TimeoutInMinutes: 120
   ICPermissionSetAssignmentAutomationRole:
     Type: "AWS::IAM::Role"
     Properties:

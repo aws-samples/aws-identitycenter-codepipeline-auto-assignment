@@ -39,6 +39,9 @@ Parameters:
     Description: The ARN of the CodeStar connection (required if SourceType is CodeStarConnection).
     Type: String
     Default: ''
+  OrgManagementAccount:
+    Type: String
+    Description: Account ID of the management account. Used setup permissions for mapping automation project to read account names and OU names.
   AutomationBuildProjectName:
     Description: The full name of the automation CodeBuild Project.
     Type: String
@@ -162,6 +165,7 @@ Resources:
                   - "identitystore:DescribeGroup"
                   - "organizations:ListAccounts"
                   - "organizations:ListRoots"
+                  - "organizations:DescribeOrganization"
                   - "identitystore:ListGroups"
                   - "identitystore:GetGroupId"
                   - "iam:GetRole"
@@ -185,9 +189,9 @@ Resources:
                   - "organizations:ListParents"
                   - "organizations:DescribeOrganizationalUnit"
                 Resource:
-                  - !Sub "arn:aws:organizations::${AWS::AccountId}:ou/o-*/ou-*"
-                  - !Sub "arn:aws:organizations::${AWS::AccountId}:account/o-*/*"
-                  - !Sub "arn:aws:organizations::${AWS::AccountId}:root/o-*/r-*"
+                  - !Sub "arn:aws:organizations::${OrgManagementAccount}:ou/o-*/ou-*"
+                  - !Sub "arn:aws:organizations::${OrgManagementAccount}:account/o-*/*"
+                  - !Sub "arn:aws:organizations::${OrgManagementAccount}:root/o-*/r-*"
   GenerateMappingCodeBuildProject:
     Type: 'AWS::CodeBuild::Project'
     Condition: CreateMappingGeneratorProject
@@ -239,7 +243,7 @@ Resources:
           artifacts:
             files:
               - '**/*'
-      TimeoutInMinutes: 60
+      TimeoutInMinutes: 120
   ValidationProject:
     Type: AWS::CodeBuild::Project
     Properties:
@@ -614,7 +618,7 @@ Resources:
           - !Sub https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${RepositoryName}
           - !Ref AWS::NoValue
       SourceVersion: !Sub 'refs/heads/${RepoBranch}'
-      TimeoutInMinutes: 10
+      TimeoutInMinutes: 20
 
   CodeBuildProjectS3Upload:
     Type: 'AWS::CodeBuild::Project'
@@ -642,7 +646,7 @@ Resources:
         
         BuildSpec: src/codebuild/buildspec-zipfiles.yml
       SourceVersion: !Sub 'refs/heads/${RepoBranch}'
-      TimeoutInMinutes: 10
+      TimeoutInMinutes: 20
 
   UploadMappingFiles:
     Type: 'AWS::CodeBuild::Project'
@@ -675,7 +679,7 @@ Resources:
           - IsCodeCommitSource
           - !Sub https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${RepositoryName}
           - !Ref AWS::NoValue
-      TimeoutInMinutes: 10
+      TimeoutInMinutes: 20
 
   CodeBuildRole:
     Type: 'AWS::IAM::Role'
