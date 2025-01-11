@@ -317,6 +317,15 @@ Note:
     }   
 ```
 
+Permissions Boundary with AWS Managed policy as opposed to customer managed policy in the example above:
+
+```
+"PermissionsBoundary": {
+        "Name": "ViewOnlyAccess",
+        "Arn": "arn:aws:iam::aws:policy/job-function/ViewOnlyAccess"
+    }
+```
+
 ### 2. Mapping files JSON structure and example
 
 #### 2.1 Valid Global Mapping JSON structure
