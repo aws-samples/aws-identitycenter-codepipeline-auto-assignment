@@ -292,7 +292,7 @@ def validate_ic_stacks_parameters(parameters: dict, errors: list) -> None:
         elif not isinstance(params[param], param_type):
             log_and_append_error(f"Parameter '{param}' must be of type {param_type.__name__}", errors)
 
-    # Validate boolean strings
+    # Validate boolean values
     bool_params = ['AdminDelegated', 'ControlTowerEnabled', 'createICAdminRole', 'createICKMSAdminRole', 'createS3KmsKey']
     for param in bool_params:
         if param in params and params[param] not in ['true', 'false']:
@@ -331,6 +331,24 @@ def validate_ic_stacks_parameters(parameters: dict, errors: list) -> None:
     if params.get('SNSEmailEndpointSubscription'):
         if not bool(re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', params['SNSEmailEndpointSubscription'])):
             log_and_append_error("Invalid email format for parameter 'SNSEmailEndpointSubscription'.", errors)
+    
+    # Validate createICAdminRole and ICAutomationAdminArn relationship
+    if params.get('createICAdminRole') == 'true' and params.get('ICAutomationAdminArn'):
+        log_and_append_error("ICAutomationAdminArn must be empty when createICAdminRole is true", errors)
+    elif params.get('ICAutomationAdminArn') and params.get('createICAdminRole') == 'true':
+        log_and_append_error("createICAdminRole must be false when ICAutomationAdminArn has a value", errors)
+
+    # Validate createICKMSAdminRole and ICKMSAdminArn relationship
+    if params.get('createICKMSAdminRole') == 'true' and params.get('ICKMSAdminArn'):
+        log_and_append_error("ICKMSAdminArn must be empty when createICKMSAdminRole is true", errors)
+    elif params.get('ICKMSAdminArn') and params.get('createICKMSAdminRole') == 'true':
+        log_and_append_error("createICKMSAdminRole must be false when ICKMSAdminArn has a value", errors)
+
+    # Validate createS3KmsKey and S3KmsArn relationship
+    if params.get('createS3KmsKey') == 'true' and params.get('S3KmsArn'):
+        log_and_append_error("S3KmsArn must be empty when createS3KmsKey is true", errors)
+    elif params.get('S3KmsArn') and params.get('createS3KmsKey') == 'true':
+        log_and_append_error("createS3KmsKey must be false when S3KmsArn has a value", errors)
 
 
 def validate_permission_set_name(name: str) -> bool:

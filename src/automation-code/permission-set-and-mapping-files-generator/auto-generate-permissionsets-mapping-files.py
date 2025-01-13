@@ -370,6 +370,8 @@ def get_account_assignments():
 
                 if is_delegated_admin:
                     # For delegated admin, consider it global if assigned to all accounts except management
+                    logger.info(
+                        f"Delegated admin detected. Checking if {curr_perm_set_name} is global...")
                     non_management_active_accounts = [
                         acc for acc in active_accounts_list if acc != management_account_id]
                     if sorted(assigned_accounts_list) == sorted(non_management_active_accounts):
@@ -378,6 +380,8 @@ def get_account_assignments():
                         target_perm_sets[curr_perm_set_name] = assigned_accounts_list
                 else:
                     # For management account, must be assigned to all accounts to be global
+                    logger.info(
+                        f"Management account detected. Checking if {curr_perm_set_name} is global...")
                     if assigned_accounts_list == active_accounts_list:
                         global_perm_sets.append(curr_perm_set_name)
                     else:
