@@ -773,6 +773,8 @@ Resources:
                   - 'codebuild:ListBuildsForProject'
                   - 'codebuild:BatchGetBuilds'
                   - 'codebuild:BatchGetProjects'
+                  - 'events:PutPermission'
+                  - 'events:RemovePermission'
                 Resource: '*'
               - Effect: Allow
                 Action:
@@ -822,6 +824,18 @@ Resources:
                   - 'logs:CreateLogStream'
                   - 'logs:PutLogEvents'
                 Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'events:DescribeEventBus'
+                  - 'events:CreateEventBus'
+                  - 'events:DeleteEventBus'
+                  - 'events:UpdateEventBus'
+                  - 'events:DeleteRule'
+                  - 'events:RemoveTargets'
+                Resource: 
+                  - !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/*"
+                  - !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/*"
+                  - !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/*/*"
     Metadata:
       cfn_nag:
         rules_to_suppress:

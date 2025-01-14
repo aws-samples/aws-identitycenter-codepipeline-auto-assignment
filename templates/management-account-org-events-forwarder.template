@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Template to forward Organization events from management account to Identity Center delegated admin account"
+Parameters:
+  IdcDelegatedAccountId:
+    Type: String
+    Description: The account ID of the delegated admin account for IAM Identity Center where events should be forwarded
+  TargetRegion:
+    Type: String
+    Description: The region where the Identity Center solution is deployed in the delegated admin account
+
+Resources:
+  OrgEventsForwardingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: OrgEventsForwardingRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: EventBridgeForwardingPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: events:PutEvents
+                Resource: !Sub arn:aws:events:${TargetRegion}:${IdcDelegatedAccountId}:event-bus/ManagementAccountOrgEvents-${IdcDelegatedAccountId}
+
+  OrgEventsRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Forward Organization events to member account
+      EventPattern:
+        source:
+          - aws.organizations
+        detail-type:
+          - AWS API Call via CloudTrail
+          - AWS Service Event via CloudTrail
+        detail:
+          eventName:
+            - CreateOrganizationalUnit
+            - MoveAccount
+            - CreateAccountResult
+            - AcceptHandshake
+      State: ENABLED
+      Targets:
+        - Arn: !Sub arn:aws:events:${TargetRegion}:${IdcDelegatedAccountId}:event-bus/ManagementAccountOrgEvents-${IdcDelegatedAccountId}
+          RoleArn: !GetAtt OrgEventsForwardingRole.Arn
+          Id: ForwardToMemberAccount

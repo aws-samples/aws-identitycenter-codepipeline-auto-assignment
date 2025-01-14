@@ -94,12 +94,6 @@ def log_and_append_error(message):
 
 logger.info("Logging initialized")
 
-if event_env:
-    event = event_env
-else:
-    event = None
-
-
 def sync_table_for_skipped_perm_sets(skipped_perm_set):
     """Sync DynamoDB table with the list of skipped permission sets if Admin is delegated"""
     logger.info("Starting sync of skipped permission sets with DynamoDB table")
@@ -1309,11 +1303,26 @@ def main(event=None):
     errors = []
 
     logger.info('Boto3 version: %s', boto3.__version__)
+    event_create_account_id = None
+    event_joined_account_id = None
+    event_moved_account_id = None
+    event_account_id = None
+    event_source = None
+    event_id = None
+    event_name = None
+    user_identity = None
+    event_create_ou_id = None
+    event_create_ou_name = None
+    party1_id = None
+    party1_type = None
+    party2_id = None
+    party2_type = None
+
     try:
         if build_initiator.startswith('rule'):
-            if event == 'AWS API Call via CloudTrail':
+            event_source = os.getenv("EVENT_SOURCE")
+            if event_source == 'aws.sso' or event_source == 'aws.sso-directory':
                 event_id = os.getenv("EVENT_ID")
-                event_source = os.getenv("EVENT_SOURCE")
                 event_name = os.getenv("EVENT_NAME")
                 user_identity = os.getenv("USER_IDENTITY")
                 logger.info(f'This build is triggered by EventBridge with the following parameters:\
@@ -1327,26 +1336,67 @@ def main(event=None):
                                 This build will still run to baseline Permission Sets and assignments.\
                                 However, please confirm that the initiator event {event_name} is legitimate. If not, revert it manually')
             elif event == 'Scheduled Event':
-                event_source = os.getenv("EVENT_SOURCE")
+                # event_source = os.getenv("EVENT_SOURCE")
                 logger.info(f'This build is triggered by EventBridge Scheduler running every 12 hours with the following parameters\
                             Event Type: {event}\
                                 Event Source: {event_source}')
-            elif event == 'AWS Service Event via CloudTrail':
-                event_id = os.getenv("EVENT_ID")
-                event_source = os.getenv("EVENT_SOURCE")
-                event_name = os.getenv("EVENT_NAME")
-                event_create_account_id = os.getenv("EVENT_CREATE_ACCOUNT_ID")
-                event_joined_account_id = os.getenv("EVENT_JOINED_ACCOUNT_ID")
-                if event_create_account_id:
-                    event_account_id = event_create_account_id
-                elif event_joined_account_id:
-                    event_account_id = event_joined_account_id
-                logger.info(f'This build is triggered by EventBridge with the following parameters:\
-                            Event Type: {event}\
-                                Event Name: {event_name}\
-                                    CloudTrail Event ID: {event_id}\
-                                        Event Source: {event_source}\
-                                            New AWS account ID: {event_account_id}')
+            elif event_source == 'aws.organizations':
+                if event == 'AWS Service Event via CloudTrail':
+                    event_id = os.getenv("EVENT_ID")
+                    # event_source = os.getenv("EVENT_SOURCE")
+                    event_name = os.getenv("EVENT_NAME")
+                    event_create_account_id = os.getenv("EVENT_CREATE_ACCOUNT_ID")
+                    # event_joined_account_id = os.getenv("EVENT_JOINED_ACCOUNT_ID")
+                    # if event_create_account_id:
+                    #     event_account_id = event_create_account_id
+                    # elif event_joined_account_id:
+                    #     event_account_id = event_joined_account_id
+                    logger.info(f'This build is triggered by EventBridge with the following parameters:\
+                                Event Type: {event}\
+                                    Event Name: {event_name}\
+                                        CloudTrail Event ID: {event_id}\
+                                            Event Source: {event_source}\
+                                                New AWS account ID: {event_create_account_id}')
+                elif event == 'AWS API Call via CloudTrail':
+                    event_id = os.getenv("EVENT_ID")
+                    # event_source = os.getenv("EVENT_SOURCE")
+                    event_name = os.getenv("EVENT_NAME")
+                    event_create_account_id = os.getenv("EVENT_CREATE_ACCOUNT_ID")
+                    party1_id = os.environ.get('PARTY1_ID')
+                    party1_type = os.environ.get('PARTY1_TYPE')
+                    party2_id = os.environ.get('PARTY2_ID')
+                    party2_type = os.environ.get('PARTY2_TYPE')
+                    if party1_type and party1_id and party2_type and party2_id:
+                        if party1_type == 'ACCOUNT':
+                            event_joined_account_id = party1_id
+                        elif party2_type == 'ACCOUNT':
+                            event_joined_account_id = party2_id                        
+                    event_moved_account_id = os.getenv("EVENT_MOVED_ACCOUNT_ID")
+                    event_create_ou_id = os.getenv("EVENT_CREATE_OU_ID")
+                    event_create_ou_name = os.getenv("EVENT_CREATE_OU_NAME")
+
+                    if event_create_account_id:
+                        event_account_id = event_create_account_id
+                    elif event_joined_account_id:
+                        event_account_id = event_joined_account_id
+                    elif event_moved_account_id:
+                        event_account_id = event_moved_account_id
+                    
+                    if event_account_id:
+                        logger.info(f'This build is triggered by EventBridge with the following parameters:\
+                                Event Type: {event}\
+                                    Event Name: {event_name}\
+                                        CloudTrail Event ID: {event_id}\
+                                            Event Source: {event_source}\
+                                                AWS account ID: {event_account_id}')
+                    elif event_create_ou_name:
+                        logger.info(f'This build is triggered by EventBridge with the following parameters:\
+                                Event Type: {event}\
+                                    Event Name: {event_name}\
+                                        CloudTrail Event ID: {event_id}\
+                                            Event Source: {event_source}\
+                                                New OU Name: {event_create_ou_name}\
+                                                    New OU Id: {event_create_ou_id}')
         elif build_initiator.startswith('codepipeline'):
             logger.info(f'This build is triggered by Pipeline with the following parameters:\
                         Pipeline Name: {build_initiator}\
