@@ -792,6 +792,8 @@ Resources:
               event_name: "$.detail.eventName"
               event_source: "$.source"
               user_identity: "$.detail.userIdentity.arn"
+        - Arn: !GetAtt ICAlertSNSNotificationLambda.Arn
+          Id: ManualChangeAlert
 
   ICManualActionDetectionRule2:
     Type: "AWS::Events::Rule"
