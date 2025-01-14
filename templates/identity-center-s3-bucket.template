@@ -100,8 +100,6 @@ Resources:
                 Action:
                   - "s3:ListBucket"
                 Resource: !Sub "arn:aws:s3:::${ICMappingBucketName}-${AWS::AccountId}-${AWS::Region}"
-
-
   ICKMSAdminRole:
     Type: "AWS::IAM::Role"
     Metadata:

@@ -33,6 +33,45 @@ def is_valid_arn(arn: str) -> bool:
     pattern = r'^arn:aws:iam::(?:\d{12}|aws):policy/(?:job-function/|service-role/)?[a-zA-Z0-9+=,.@-_/]+$'
     return bool(re.match(pattern, arn))
 
+# def is_valid_iam_role_arn(arn: str) -> bool:
+#     """Validate AWS IAM Role ARN format"""
+#     if not arn:
+#         return False
+#     pattern = r'^arn:aws:iam::\d{12}:role/[a-zA-Z0-9+=,.@-_/]+$'
+#     return bool(re.match(pattern, arn))
+
+def is_valid_iam_role_arn(arn: str) -> bool:
+    """
+    Validate AWS IAM Role ARN format.
+    Role name must be 1-64 characters using alphanumeric and '+=,.@-_' characters.
+    """
+    if not arn:
+        return False
+    
+    pattern = (
+        r'^arn:aws:iam::\d{12}:role/'
+        r'(?:aws-service-role/[a-z0-9.-]+\.amazonaws\.com/)?'
+        r'[a-zA-Z0-9+=,.@_-]{1,64}$'
+    )
+    
+    return bool(re.match(pattern, arn))
+
+
+
+def is_valid_ic_instance_arn(arn: str) -> bool:
+    """Validate AWS Identity Center Instance ARN format"""
+    if not arn:
+        return False
+    pattern = r'^arn:(aws|aws-us-gov|aws-cn|aws-iso|aws-iso-b):sso:::instance/(sso)?ins-[a-zA-Z0-9-.]{16}$'
+    return bool(re.match(pattern, arn))
+
+def is_valid_kms_key_arn(arn: str) -> bool:
+    """Validate AWS KMS Key ARN format"""
+    if not arn:
+        return False
+    pattern = r'^arn:aws:kms:[a-z0-9-]+:\d{12}:key/[a-f0-9-]{36}$'
+    return bool(re.match(pattern, arn))
+
 
 def validate_inline_policies(policies: dict) -> tuple[bool, list[str]]:
     """
@@ -174,9 +213,9 @@ def verify_policy_name_matches_arn(name: str, arn: str) -> bool:
 def validate_description(description: str) -> bool:
     """
     Validate description format.
-    Must be 1-256 characters, no control characters.
+    Must be 1-700 characters, no control characters.
     """
-    if not description or len(description) > 256:
+    if not description or len(description) > 700:
         return False
     return not any(ord(char) < 32 for char in description)
 
@@ -218,7 +257,104 @@ def validate_account_id(account_id: str) -> bool:
     if account_id.startswith('name:') or account_id.startswith('ou:'):
         return True
     return bool(re.match(r'^\d{12}$', account_id))
-    # return bool(re.match(r'^[1-9]\d{11}$', account_id))
+
+
+def validate_ic_stacks_parameters(parameters: dict, errors: list, param_file) -> None:
+    """Validate the identity-center-stacks-parameters.json file structure and content"""
+    required_params = {
+        'AdminDelegated': str,
+        'ControlTowerEnabled': str,
+        'OrgManagementAccount': str,
+        'OrganizationId': str,
+        'IdentityStoreId': str,
+        'ICInstanceARN': str,
+        'ICMappingBucketName': str,
+        'SNSEmailEndpointSubscription': str,
+        'createICAdminRole': str,
+        'ICAutomationAdminArn': str,
+        'createICKMSAdminRole': str,
+        'ICKMSAdminArn': str,
+        'createS3KmsKey': str,
+        'S3KmsArn': str
+    }
+
+    # Check if Parameters key exists
+    if 'Parameters' not in parameters:
+        log_and_append_error(f"Missing 'Parameters' key in {param_file}", errors)
+        return
+
+    params = parameters['Parameters']
+
+    # Check all required parameters exist and have correct type
+    for param, param_type in required_params.items():
+        if param not in params:
+            log_and_append_error(f"Missing required parameter '{param}' in {param_file}", errors)
+        elif not isinstance(params[param], param_type):
+            log_and_append_error(f"Parameter '{param}' must be of type {param_type.__name__} in {param_file}", errors)
+
+    # Validate boolean values
+    bool_params = ['AdminDelegated', 'ControlTowerEnabled', 'createICAdminRole', 'createICKMSAdminRole', 'createS3KmsKey']
+    for param in bool_params:
+        if param in params and params[param] not in ['true', 'false']:
+            log_and_append_error(f"Parameter '{param}' must be 'true' or 'false' in {param_file}", errors)
+
+    # Validate Identity Center Instance ARN
+    if params.get('ICInstanceARN') and not is_valid_ic_instance_arn(params['ICInstanceARN']):
+        log_and_append_error(f"Invalid Identity Center Instance ARN format for parameter 'ICInstanceARN' in {param_file}", errors)
+    
+    # Validate IAM Role ARNs
+    iam_role_arns = ['ICAutomationAdminArn', 'ICKMSAdminArn']
+    for param in iam_role_arns:
+        if params.get(param) and not is_valid_iam_role_arn(params[param]):
+            log_and_append_error(f"Invalid IAM Role ARN format for parameter '{param}' in {param_file}", errors)
+    
+    # Validate KMS Key ARN
+    if params.get('S3KmsArn') and not is_valid_kms_key_arn(params['S3KmsArn']):
+        log_and_append_error(f"Invalid KMS Key ARN format for parameter 'S3KmsArn' in {param_file}", errors)
+    
+    # Validate OrgManagementAccount (12 digit account ID)
+    if params.get('OrgManagementAccount'):
+        if not bool(re.match(r'^[0-9]{12}$', params['OrgManagementAccount'])):
+            log_and_append_error(f"Invalid AWS account ID format for parameter 'OrgManagementAccount' in {param_file}. Must be 12 digits.", errors)
+    
+    # Validate OrganizationId (o-followed by 10-32 characters)
+    if params.get('OrganizationId'):
+        if not bool(re.match(r'^o-[a-z0-9]{10,32}$', params['OrganizationId'])):
+            log_and_append_error(f"Invalid Organization ID format for parameter 'OrganizationId' in {param_file}. Must start with 'o-' followed by 10-32 alphanumeric characters.", errors)
+    
+    # Validate IdentityStoreId (10-32 character alphanumeric string)
+    if params.get('IdentityStoreId'):
+        if not bool(re.match(r'^[a-z0-9-]{10,32}$', params['IdentityStoreId'])):
+            log_and_append_error(f"Invalid Identity Store ID format for parameter 'IdentityStoreId' in {param_file}. Must be 10-32 alphanumeric characters or hyphens.", errors)
+    
+    # Validate SNSEmailEndpointSubscription (valid email format)
+    if params.get('SNSEmailEndpointSubscription'):
+        if not bool(re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', params['SNSEmailEndpointSubscription'])):
+            log_and_append_error(f"Invalid email format for parameter 'SNSEmailEndpointSubscription' in {param_file}.", errors)
+    
+    # Validate createICAdminRole and ICAutomationAdminArn relationship
+    if params.get('createICAdminRole') == 'true' and params.get('ICAutomationAdminArn'):
+        log_and_append_error(f"ICAutomationAdminArn must be empty when createICAdminRole is true in {param_file}", errors)
+    elif params.get('ICAutomationAdminArn') and params.get('createICAdminRole') == 'true':
+        log_and_append_error(f"createICAdminRole must be false when ICAutomationAdminArn has a value in {param_file}", errors)
+    elif params.get('createICAdminRole') == 'false' and not params.get('ICAutomationAdminArn'):
+        log_and_append_error(f"ICAutomationAdminArn must have a value when createICAdminRole is false in {param_file}", errors)
+
+    # Validate createICKMSAdminRole and ICKMSAdminArn relationship
+    if params.get('createICKMSAdminRole') == 'true' and params.get('ICKMSAdminArn'):
+        log_and_append_error(f"ICKMSAdminArn must be empty when createICKMSAdminRole is true in {param_file}", errors)
+    elif params.get('ICKMSAdminArn') and params.get('createICKMSAdminRole') == 'true':
+        log_and_append_error(f"createICKMSAdminRole must be false when ICKMSAdminArn has a value in {param_file}", errors)
+    elif params.get('createICKMSAdminRole') == 'false' and not params.get('ICKMSAdminArn'):
+        log_and_append_error(f"ICKMSAdminArn must have a value when createICKMSAdminRole is false in {param_file}", errors)
+
+    # Validate createS3KmsKey and S3KmsArn relationship
+    if params.get('createS3KmsKey') == 'true' and params.get('S3KmsArn'):
+        log_and_append_error(f"S3KmsArn must be empty when createS3KmsKey is true in {param_file}", errors)
+    elif params.get('S3KmsArn') and params.get('createS3KmsKey') == 'true':
+        log_and_append_error(f"createS3KmsKey must be false when S3KmsArn has a value in {param_file}", errors)
+    elif params.get('createS3KmsKey') == 'false' and not params.get('S3KmsArn'):
+        log_and_append_error(f"S3KmsArn must have a value when createS3KmsKey is false in {param_file}", errors)
 
 
 def validate_permission_set_name(name: str) -> bool:
@@ -226,7 +362,8 @@ def validate_permission_set_name(name: str) -> bool:
     Validate permission set name.
     Must be 1-32 characters, alphanumeric and [-_] only.
     """
-    return bool(re.match(r'^[\w-]{1,32}$', name))
+    # return bool(re.match(r'^[\w-]{1,32}$', name))
+    return bool(re.match(r'^[\w+=,.@-]{1,32}$', name))
 
 
 def validate_tag_key(key: str) -> bool:
@@ -564,6 +701,22 @@ def validate_all_files():
     errors = []
     try:
         base_path = 'identity-center-mapping-info'
+        param_file = 'identity-center-stacks-parameters.json'
+
+        # Validate identity-center-stacks-parameters.json
+        logger.info(f"Opening {param_file}")
+        try:
+            with open('identity-center-stacks-parameters.json', 'r') as file:
+                try:
+                    parameters = json.load(file)
+                    validate_ic_stacks_parameters(parameters, errors, param_file)
+                    logger.info(f"Completed validation of {param_file}")
+                except json.JSONDecodeError as e:
+                    log_and_append_error(
+                        f"Invalid JSON format in {param_file}: {str(e)}", errors)
+        except (FileNotFoundError, PermissionError) as e:
+            log_and_append_error(
+                f"Error accessing {param_file}: {str(e)}", errors)
 
         # Validate permission set JSON files
         permission_sets_path = os.path.join(base_path, 'permission-sets')

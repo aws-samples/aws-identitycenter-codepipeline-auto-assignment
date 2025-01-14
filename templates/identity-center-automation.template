@@ -423,6 +423,23 @@ Resources:
     Properties:
       LogGroupName: !Sub ic-auto-assignment-enabler-${AWS::AccountId}-${AWS::Region}
       RetentionInDays: 30
+    
+  #####################################################################################################
+  # AWS Event Bus Policy - To receive Organization event from Management account when Admin delegated #
+  #####################################################################################################
+  OrgEventsEventBus: 
+    Type: AWS::Events::EventBus
+    Properties: 
+        Name: !Sub ManagementAccountOrgEvents-${AWS::AccountId}
+        Policy: 
+          Version: "2012-10-17"
+          Statement:
+            - Sid: AllowReceivingManagementAccountOrgEvents
+              Effect: "Allow"
+              Principal: 
+                AWS: !Sub "arn:aws:iam::${OrgManagementAccount}:root"
+              Action: "events:PutEvents"
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/ManagementAccountOrgEvents-${AWS::AccountId}"
 
   ################################################################
   # AWS Event Rules - Trigger Automation by invited account #
@@ -435,11 +452,21 @@ Resources:
         source:
           - aws.organizations
         detail-type:
-          - AWS Service Event via CloudTrail
+          - AWS API Call via CloudTrail
         detail:
           eventName:
-            - AccountJoinedOrganization
-      Name: TriggerICAutomationJoinedNewAccountEnablerRule
+            - AcceptHandshake
+          responseElements:
+            handshake:
+              action:
+                - "INVITE"
+              state:
+                - "ACCEPTED"
+      Name: TriggerICAutomationJoinedInvitedAccountEnablerRule
+      EventBusName: !If 
+        - AdminDelegatedEqualsTrue
+        - !Ref OrgEventsEventBus
+        - !Ref "AWS::NoValue"
       State: ENABLED
       Targets:
         - Arn: !GetAtt ICAutomationBuildProject.Arn
@@ -465,8 +492,20 @@ Resources:
                     "value": "<event_source>"
                   },
                   {
-                    "name": "EVENT_JOINED_ACCOUNT_ID",
-                    "value": "<account_id>"
+                    "name": "PARTY1_ID",
+                    "value": "<party1_id>"
+                  },
+                  {
+                    "name": "PARTY1_TYPE",
+                    "value": "<party1_type>"
+                  },
+                  {
+                    "name": "PARTY2_ID",
+                    "value": "<party2_id>"
+                  },
+                  {
+                    "name": "PARTY2_TYPE",
+                    "value": "<party2_type>"
                   }
                 ]
               }
@@ -475,9 +514,12 @@ Resources:
               event_id: "$.detail.eventID"
               event_name: "$.detail.eventName"
               event_source: "$.source"
-              account_id: "$.detail.additionalEventData.newAccountId"
+              party1_id: "$.detail.responseElements.handshake.parties[0].id"
+              party1_type: "$.detail.responseElements.handshake.parties[0].type"
+              party2_id: "$.detail.responseElements.handshake.parties[1].id"
+              party2_type: "$.detail.responseElements.handshake.parties[1].type"
   ##########################################################
-  # AWS Event Rules - Trigger Automation by regular actions #
+  # AWS Event Rules - Trigger Automation by new account creation success #
   ##########################################################
   ICCreateEventRuleforOrganizationCreateAccount:
     Type: "AWS::Events::Rule"
@@ -496,6 +538,10 @@ Resources:
               state:
                 - SUCCEEDED
       Name: TriggerICAutomationCreateNewAccountEnablerRule
+      EventBusName: !If 
+        - AdminDelegatedEqualsTrue
+        - !Ref OrgEventsEventBus
+        - !Ref "AWS::NoValue"
       State: ENABLED
       Targets:
         - Arn: !GetAtt ICAutomationBuildProject.Arn
@@ -532,6 +578,128 @@ Resources:
               event_name: "$.detail.eventName"
               event_source: "$.source"
               account_id: "$.detail.serviceEventDetails.createAccountStatus.accountId"
+  ##########################################################
+  # AWS Event Rules - Trigger Automation by move account operation #
+  ##########################################################
+  ICCreateEventRuleforOrganizationMoveAccount:
+    Type: "AWS::Events::Rule"
+    Properties:
+      Description: Trigger the automation CodeBuild project when new account is moved
+      EventPattern:
+        source:
+          - aws.organizations
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventName:
+            - MoveAccount
+      Name: TriggerICAutomationMoveAccountEnablerRule
+      EventBusName: !If 
+        - AdminDelegatedEqualsTrue
+        - !Ref OrgEventsEventBus
+        - !Ref "AWS::NoValue"
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt ICAutomationBuildProject.Arn
+          RoleArn: !GetAtt AutoICEventBridgeRole.Arn
+          Id: TargetICAutomationProject
+          InputTransformer:
+            InputTemplate: |
+              {
+                "environmentVariablesOverride": [{
+                    "name": "EVENT_DATA",
+                    "value": "<detail_type>"
+                  },
+                  {
+                    "name": "EVENT_ID",
+                    "value": "<event_id>"
+                  },
+                  {
+                    "name": "EVENT_NAME",
+                    "value": "<event_name>"
+                  },
+                  {
+                    "name": "EVENT_SOURCE",
+                    "value": "<event_source>"
+                  },
+                  {
+                    "name": "EVENT_MOVED_ACCOUNT_ID",
+                    "value": "<account_id>"
+                  }
+                ]
+              }
+            InputPathsMap:
+              detail_type: "$.detail-type"
+              event_id: "$.detail.eventID"
+              event_name: "$.detail.eventName"
+              event_source: "$.source"
+              account_id: "$.detail.requestParameters.accountId"
+    
+  ##########################################################
+  # AWS Event Rules - Trigger Automation by new account creation success #
+  ##########################################################
+  ICCreateEventRuleforOrganizationCreateOU:
+    Type: "AWS::Events::Rule"
+    Properties:
+      Description: Trigger the automation CodeBuild project when new OU is created
+      EventPattern:
+        source:
+          - aws.organizations
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventName:
+            - CreateOrganizationalUnit
+          responseElements:
+            organizationalUnit:
+              id:
+                - {"prefix": "ou"}
+      Name: TriggerICAutomationCreateNewOUEnablerRule
+      EventBusName: !If 
+        - AdminDelegatedEqualsTrue
+        - !Ref OrgEventsEventBus
+        - !Ref "AWS::NoValue"
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt ICAutomationBuildProject.Arn
+          RoleArn: !GetAtt AutoICEventBridgeRole.Arn
+          Id: TargetICAutomationProject
+          InputTransformer:
+            InputTemplate: |
+              {
+                "environmentVariablesOverride": [{
+                    "name": "EVENT_DATA",
+                    "value": "<detail_type>"
+                  },
+                  {
+                    "name": "EVENT_ID",
+                    "value": "<event_id>"
+                  },
+                  {
+                    "name": "EVENT_NAME",
+                    "value": "<event_name>"
+                  },
+                  {
+                    "name": "EVENT_SOURCE",
+                    "value": "<event_source>"
+                  },
+                  {
+                    "name": "EVENT_CREATE_OU_ID",
+                    "value": "<ou_id>"
+                  },
+                  {
+                    "name": "EVENT_CREATE_OU_NAME",
+                    "value": "<ou_name>"
+                  }
+                ]
+              }
+            InputPathsMap:
+              detail_type: "$.detail-type"
+              event_id: "$.detail.eventID"
+              event_name: "$.detail.eventName"
+              event_source: "$.source"
+              ou_id: "$.detail.responseElements.organizationalUnit.id"
+              ou_name: "$.detail.responseElements.organizationalUnit.name"
 
 
   ###########################################################################################################

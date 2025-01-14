@@ -70,7 +70,9 @@ This also recommended as a best practice:
 5. Choose Next to proceed with setting options for your stack and create the stack.
 6. Once the CloudFormation stack is created successfully, follow the steps under Deployment section below.
 
-#### Deployment in delegated administrator account
+## Implementation
+
+### Deployment in delegated administrator account
 1. [Clone/fork](#downloading-and-keeping-the-solution-up-to-date) this repository. cd into the repository root directory.
 2. Create an AWS CodeCommit repository or a [CodeStar connection](https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-create.html) to connect to your git repository. The AWS CodeCommit repository or the CodeStar Connection must exist prior to deploying codepipeline-stack.template in next step.
     - If you chose CodeCommit, the name of CodeCommit repository will be used when we create pipeline with codepipeline-stack.template.
@@ -100,6 +102,7 @@ This also recommended as a best practice:
 7. Create your own permission sets json defination files as well as the account assignment defination file "global-mapping.json" and "target-mapping.json". Note, if you chose to perform the optional Step 6 above, the existing permission sets and mapping files will be in the S3 bucket. You can replace the files in *identity-center-mapping-info* folder in this repository with the one generated in the S3 bucket.
 8. Push the following files to your CodeCommit repository, e.g. Linux tree structure:
 ```
+.
 ├── CHANGELOG.md
 ├── CODE_OF_CONDUCT.md
 ├── CONTRIBUTING.md
@@ -115,8 +118,8 @@ This also recommended as a best practice:
 │   │   ├── 3-example-billing.json
 │   │   ├── 4-example-operations.json
 │   │   ├── 5-example-sec-readonly.json
-│   │   ├── 6-example-cx-managed-policy-boundary.json
-│   │   └── 7-example-aws-managed-policy-boundary.json
+│   │   ├── 6-example-cx-managed-boundary.json
+│   │   └── 7-example-aws-managed-boundary.json
 │   └── target-mapping.json
 ├── identity-center-stacks-parameters.json
 ├── src
@@ -142,13 +145,23 @@ This also recommended as a best practice:
     │   ├── IC-Delegate-Admin.template
     │   └── IC_delegate_admin_main.py
     ├── identity-center-automation.template
-    └── identity-center-s3-bucket.template
+    ├── identity-center-s3-bucket.template
+    └── management-account-org-events-forwarder.template
 ```
 9. The pipeline will automatically create 2 new CloudFormation stacks *IdentityCenter-S3-Bucket-Stack* and *IdentityCenter-Automation-Stack* in your account and upload your permission sets and mapping files to a centralized S3 bucket. The non-default parameters are specified in identity-center-stacks-parameters.json file.
 10. The 'ReviewAndExecute' stage needs manual approval before the Pipeline invoke the CodeBuild Project. Once the pipeline is completed, verify the permission sets and account mapping on the AWS IAM Identity Center service console.
 
+#### (Optional) Deploy event forwarder in Management account for automation in delegated administrator account to trigger automatically on Organizations API events
+1. In your Organizations Management account us-east-1 region, use the templates/management-account-org-events-forwarder.template cloudformation template to create an EventBridge event forwarder rule and a corresponding IAM role, to forward Organization API events such as MoveAccount, CreateOrganizationUnit, AcceptHandshake (for invited accounts) to the Event Bus in delegated administrator account. On the Specify stack details page, type a stack name in the Stack name box. You can choose any name, such as, *ic-orgEventsForwarder*.
+**Note** - This tempate should only be deployed in us-east-1 region in the management account as AWS Organizations is a global service and the it's events exist only in us-east-1 region. 
+2. In the Parameters section, specify the following parameters:
+    - *IdcDelegatedAccountId*: AWS Account ID of the delegated administrator account for Identity Center where you deployed the above pipeline.
+    - *TargetRegion*: Target region in your delegated administrator account for Identity Center where Identity Center is enabled and the above pipeline is deployed.
+3. Ensure that the stack is successfully deployed or resolve any errors.
+4. Organizations events will now be forwarded to the delegated administrator account and will trigger the automation on certain actions to baseline your permissions and assignments.
 
-### How to implement this solution in Organization Management account:
+
+### Deployment in Organization Management account:
 1. [Clone/fork](#downloading-and-keeping-the-solution-up-to-date) this repository. cd into the repository root directory.
 2. Create an AWS CodeCommit repository or a [CodeStar connection](https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-create.html) to connect to your git repository. The AWS CodeCommit repository or the CodeStar Connection must exist prior to deploying codepipeline-stack.template in next step.
     - If you chose CodeCommit, the name of CodeCommit repository will be used when we create pipeline with codepipeline-stack.template.
@@ -178,6 +191,7 @@ This also recommended as a best practice:
 7. Create your own permission sets json defination files as well as the account assignment defination file "global-mapping.json" and "target-mapping.json". Note, if you chose to perform the optional Step 6 above, the existing permission sets and mapping files will be in the S3 bucket. You can replace the files in *identity-center-mapping-info* folder in this repository with the one generated in the S3 bucket.
 8. Push the following files to your git repository, e.g. Linux tree structure:
 ```
+.
 ├── CHANGELOG.md
 ├── CODE_OF_CONDUCT.md
 ├── CONTRIBUTING.md
@@ -193,8 +207,8 @@ This also recommended as a best practice:
 │   │   ├── 3-example-billing.json
 │   │   ├── 4-example-operations.json
 │   │   ├── 5-example-sec-readonly.json
-│   │   ├── 6-example-cx-managed-policy-boundary.json
-│   │   └── 7-example-aws-managed-policy-boundary.json
+│   │   ├── 6-example-cx-managed-boundary.json
+│   │   └── 7-example-aws-managed-boundary.json
 │   └── target-mapping.json
 ├── identity-center-stacks-parameters.json
 ├── src
@@ -220,7 +234,8 @@ This also recommended as a best practice:
     │   ├── IC-Delegate-Admin.template
     │   └── IC_delegate_admin_main.py
     ├── identity-center-automation.template
-    └── identity-center-s3-bucket.template
+    ├── identity-center-s3-bucket.template
+    └── management-account-org-events-forwarder.template
 ```
 9. The pipeline will automatically create 2 new CloudFormation stacks *IdentityCenter-S3-Bucket-Stack* and *IdentityCenter-Automation-Stack* in your account and upload your permission sets and mapping files to a centralized S3 bucket. The non-default parameters are specified in identity-center-stacks-parameters.json file.
 10. The 'ReviewAndExecute' stage needs manual approval before the Pipeline invoke the CodeBuild Project. Once the pipeline is completed, verify the permission sets and account mapping on the AWS IAM Identity Center service console.
@@ -229,7 +244,7 @@ This also recommended as a best practice:
 **Note:** If you chose to create IAM role for Identity Center and KMS admin, the ARNs of those roles can be found in the output tab of the *IdentityCenter-S3-Bucket-Stack* in AWS CloudFormation console. To make manual changes to Identity Center without triggering notifications, you can assume the *ICAdminRole* role. View steps on [how to assume a role](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use_switch-role-console.html).
 
 
-### Architecture Diagram
+## Architecture Diagram
 
   ![Image of Identity_Center_Solution_Diagram](diagram/architecture_diagram.png) 
 
