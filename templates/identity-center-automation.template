@@ -392,9 +392,9 @@ Resources:
                   - "organizations:ListParents"
                   - "organizations:DescribeOrganizationalUnit"
                 Resource:
-                  - !Sub "arn:aws:organizations::${AWS::AccountId}:ou/o-*/ou-*"
-                  - !Sub "arn:aws:organizations::${AWS::AccountId}:account/o-*/*"
-                  - !Sub "arn:aws:organizations::${AWS::AccountId}:root/o-*/r-*"
+                  - !Sub "arn:aws:organizations::${OrgManagementAccount}:ou/o-*/ou-*"
+                  - !Sub "arn:aws:organizations::${OrgManagementAccount}:account/o-*/*"
+                  - !Sub "arn:aws:organizations::${OrgManagementAccount}:root/o-*/r-*"
               - Sid: S3EssentialActions
                 Effect: Allow
                 Action:
