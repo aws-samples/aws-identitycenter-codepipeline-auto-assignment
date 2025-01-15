@@ -74,9 +74,9 @@ This also recommended as a best practice:
 
 ### Deployment in delegated administrator account
 1. [Clone/fork](#downloading-and-keeping-the-solution-up-to-date) this repository. cd into the repository root directory.
-2. Create an AWS CodeCommit repository or a [CodeStar connection](https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-create.html) to connect to your git repository. The AWS CodeCommit repository or the CodeStar Connection must exist prior to deploying codepipeline-stack.template in next step.
+2. Create an AWS CodeCommit repository or a [CodeConnection connection](https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-create.html) to connect to your git repository. The AWS CodeCommit repository or the CodeConnection Connection must exist prior to deploying codepipeline-stack.template in next step.
     - If you chose CodeCommit, the name of CodeCommit repository will be used when we create pipeline with codepipeline-stack.template.
-    - If you created a CodeStar Connection, the full connection ARN of the CodeStar Connection will be used when we create pipeline with codepipeline-stack.template.
+    - If you created a CodeConnection Connection, the full connection ARN of the CodeConnection Connection will be used when we create pipeline with codepipeline-stack.template.
 3. Specify parameter values in *identity-center-stacks-parameters.json* file in the repository. Those parameters will be used by the CodePipeline to create other 2 CloudFormation stacks.
     - The value of *"ICMappingBucketName"* parameter is used by both codepipeline-stack.template and identity-center-stacks-parameters.json, must be same.
     - As you've chosen to manage Identity Center in a delegated administrator account, the value of *"AdminDelegated"* must be **true**.
@@ -92,9 +92,9 @@ This also recommended as a best practice:
     - *IdentityStoreId*: Required when GeneratePermissionSetsAndMappings is set to true. Identity Store ID can be found on the AWS IAM Identity Center console 'Settings' page.
     - *AutomationBuildProjectName*: Specify the name for the automation CodeBuild projects or leave default.
     - *ICMappingBucketName*: The same bucket name will be used in the automation and s3 stack. This S3 bucket is used to store the permission sets and mapping files. **Specify the same name you have specified in identity-center-stacks-parameters.json**.
-    - *SourceType*: Choose the source type for your pipeline (AWS CodeCommit or CodeStarConnection).
-    - *ConnectionArn*: The ARN of the CodeStar connection (**required if you set SourceType as CodeStarConnection**).
-    - *RepositoryName*: The name of the repository (full name of repository with path for CodeStarConnection; repository name for AWS CodeCommit).
+    - *SourceType*: Choose the source type for your pipeline (AWS CodeCommit or CodeConnection Connection).
+    - *ConnectionArn*: The ARN of the CodeConnection connection (**required if you set SourceType as CodeConnection**).
+    - *RepositoryName*: The name of the repository (full name of repository with path for CodeConnection Connection; repository name for AWS CodeCommit).
     - *RepoBranch*: The name of branch that will trigger the CodePipeline run. Default is 'main'.
     - *SNSPipelineApprovalEmail*: The email that will receive and approve pipeline approval notifications.
     - *OrgManagementAccount*: Account Id of the Organizations management account.
@@ -153,7 +153,7 @@ This also recommended as a best practice:
 
 #### (Optional) Deploy event forwarder in Management account for automation in delegated administrator account to trigger automatically on Organizations API events
 1. In your Organizations Management account us-east-1 region, use the templates/management-account-org-events-forwarder.template cloudformation template to create an EventBridge event forwarder rule and a corresponding IAM role, to forward Organization API events such as MoveAccount, CreateOrganizationUnit, AcceptHandshake (for invited accounts) to the Event Bus in delegated administrator account. On the Specify stack details page, type a stack name in the Stack name box. You can choose any name, such as, *ic-orgEventsForwarder*.
-**Note** - This tempate should only be deployed in us-east-1 region in the management account as AWS Organizations is a global service and the it's events exist only in us-east-1 region. 
+**Note** - This tempalte must be deployed in us-east-1 region in the management account as AWS Organizations is a global service and the it's events exist only in us-east-1 region. 
 2. In the Parameters section, specify the following parameters:
     - *IdcDelegatedAccountId*: AWS Account ID of the delegated administrator account for Identity Center where you deployed the above pipeline.
     - *TargetRegion*: Target region in your delegated administrator account for Identity Center where Identity Center is enabled and the above pipeline is deployed.
@@ -163,9 +163,9 @@ This also recommended as a best practice:
 
 ### Deployment in Organization Management account:
 1. [Clone/fork](#downloading-and-keeping-the-solution-up-to-date) this repository. cd into the repository root directory.
-2. Create an AWS CodeCommit repository or a [CodeStar connection](https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-create.html) to connect to your git repository. The AWS CodeCommit repository or the CodeStar Connection must exist prior to deploying codepipeline-stack.template in next step.
+2. Create an AWS CodeCommit repository or a [CodeConnection connection](https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-create.html) to connect to your git repository. The AWS CodeCommit repository or the CodeConnection Connection must exist prior to deploying codepipeline-stack.template in next step.
     - If you chose CodeCommit, the name of CodeCommit repository will be used when we create pipeline with codepipeline-stack.template.
-    - If you created a CodeStar Connection, the full connection ARN of the CodeStar Connection will be used when we create pipeline with codepipeline-stack.template.
+    - If you created a CodeConnection Connection, the full connection ARN of the CodeConnection Connection will be used when we create pipeline with codepipeline-stack.template.
 3. Specify parameter values in *identity-center-stacks-parameters.json* file in the repository. Those parameters will be used by the CodePipeline to create other 2 CloudFormation stacks.
     - The value of *"ICMappingBucketName"* parameter is used by both codepipeline-stack.template and identity-center-stacks-parameters.json, must be same.
     - As you've chosen to manage Identity Center in Organization Management account, the value of AdminDelegated must be **false**.
@@ -181,9 +181,9 @@ This also recommended as a best practice:
     - *IdentityStoreId*: Required when GeneratePermissionSetsAndMappings is set to true. Identity Store ID can be found on the AWS IAM Identity Center console 'Settings' page.
     - *AutomationBuildProjectName*: Specify the name for the automation CodeBuild projects or leave default.
     - *ICMappingBucketName*: The same bucket name will be used in the automation and s3 stack. This S3 bucket is used to store the permission sets and mapping files. **Specify the same name you have specified in identity-center-stacks-parameters.json**.
-    - *SourceType*: Choose the source type for your pipeline (AWS CodeCommit or CodeStarConnection).
-    - *ConnectionArn*: The ARN of the CodeStar connection (**required if you set SourceType as CodeStarConnection**).
-    - *RepositoryName*: The name of the repository (full name of repository with path for CodeStarConnection; repository name for AWS CodeCommit).
+    - *SourceType*: Choose the source type for your pipeline (AWS CodeCommit or CodeConnection Connection).
+    - *ConnectionArn*: The ARN of the CodeConnection connection (**required if you set SourceType as CodeConnection**).
+    - *RepositoryName*: The name of the repository (full name of repository with path for CodeConnection Connection; repository name for AWS CodeCommit).
     - *RepoBranch*: The name of branch that will trigger the CodePipeline run. Default is 'main'.
     - *SNSPipelineApprovalEmail*: The email that will receive and approve pipeline approval notifications.
     - *OrgManagementAccount*: Account Id of the Organizations management account.

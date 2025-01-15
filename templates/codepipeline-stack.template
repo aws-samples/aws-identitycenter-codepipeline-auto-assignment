@@ -3,7 +3,7 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: "This template creates AWS CodePipeline and other CICD resources for Identity Center automation solution (qs-1t52at7re)"
 
 Conditions:
-  IsCodeStarConnectionSource: !Equals [!Ref SourceType, 'CodeStarConnection']
+  IsCodeConnectionSource: !Equals [!Ref SourceType, 'CodeConnection']
   IsCodeCommitSource: !Equals [!Ref SourceType, 'CodeCommit']
   CreateMappingGeneratorProject: !Equals [!Ref GeneratePermissionSetsAndMappings, 'true']
 Parameters:
@@ -21,14 +21,14 @@ Parameters:
     Type: String
     Description: Required when GeneratePermissionSetsAndMappings is set to true. Identity Store ID can be found on the AWS IAM Identity Center console 'Settings' page.
   SourceType:
-    Description: Choose the source type for your pipeline (AWS CodeCommit or CodeStarConnection).
+    Description: Choose the source type for your pipeline (AWS CodeCommit or CodeConnection).
     Type: String
-    Default: CodeStarConnection
+    Default: CodeConnection
     AllowedValues:
-      - CodeStarConnection
+      - CodeConnection
       - CodeCommit
   RepositoryName:
-    Description: The name of the repository (full name of repository with path for CodeStarConnection; repository name for AWS CodeCommit).
+    Description: The name of the repository (full name of repository with path for CodeConnection; repository name for AWS CodeCommit).
     Type: String
     Default: ic-automation
   RepoBranch:
@@ -36,7 +36,7 @@ Parameters:
     Type: String
     Default: main
   ConnectionArn:
-    Description: The ARN of the CodeStar connection (required if SourceType is CodeStarConnection).
+    Description: The ARN of the CodeConnection Connection (required if SourceType is CodeConnection).
     Type: String
     Default: ''
   OrgManagementAccount:
@@ -363,8 +363,8 @@ Resources:
         - Name: Source
           Actions:
             - !If
-              - IsCodeStarConnectionSource
-              - Name: CodeStarSourceConnection
+              - IsCodeConnectionSource
+              - Name: CodeConnectionSource
                 ActionTypeId:
                   Category: Source
                   Owner: AWS
@@ -488,7 +488,7 @@ Resources:
               Configuration:
                 NotificationArn: !Ref SNSPipelineApprovalTopic
                 CustomData: !If 
-                  - IsCodeStarConnectionSource
+                  - IsCodeConnectionSource
                   - "Author #{SourceVariables.AuthorId} made Commit #{SourceVariables.CommitId}. Message: #{SourceVariables.CommitMessage}."
                   - "Author made Commit #{SourceVariables.CommitId}. Message: #{SourceVariables.CommitMessage}."
                 # CustomData: "Author #{SourceVariables.AuthorId} made Commit #{SourceVariables.CommitId}.\n\nMessage: #{SourceVariables.CommitMessage}."
@@ -539,8 +539,10 @@ Resources:
             Version: 2012-10-17
             Statement:
               - !If
-                - IsCodeStarConnectionSource
-                - Action: 'codestar-connections:UseConnection'
+                - IsCodeConnectionSource
+                - Action: 
+                    - 'codestar-connections:UseConnection'
+                    - 'codeconnections:UseConnection'
                   Effect: 'Allow'
                   Resource: !Ref ConnectionArn
                 - !Ref AWS::NoValue
