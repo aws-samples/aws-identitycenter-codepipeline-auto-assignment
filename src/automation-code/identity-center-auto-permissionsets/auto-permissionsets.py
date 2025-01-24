@@ -94,6 +94,7 @@ def log_and_append_error(message):
 
 logger.info("Logging initialized")
 
+
 def sync_table_for_skipped_perm_sets(skipped_perm_set):
     """Sync DynamoDB table with the list of skipped permission sets if Admin is delegated"""
     logger.info("Starting sync of skipped permission sets with DynamoDB table")
@@ -113,8 +114,6 @@ def sync_table_for_skipped_perm_sets(skipped_perm_set):
                 )
                 logger.info(
                     f"Drift detected in DynamoDB table. Deleted item: {item} from table.")
-
-            sleep(0.1)
 
         # Update the table with all permission sets in the skipped_perm_set
         batch = dynamodb.batch_write_item(RequestItems={
@@ -170,7 +169,6 @@ def get_all_permission_sets():
                 InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn
             )
-            sleep(0.1)
             description = ''
             try:
                 description = describe_perm_set['PermissionSet'].get(
@@ -185,7 +183,6 @@ def get_all_permission_sets():
                 InstanceArn=ic_instance_arn,
                 ResourceArn=perm_set_arn
             )
-            sleep(0.1)
             tags = list_tags['Tags']
             while 'NextToken' in list_tags:
                 list_tags = ic_admin.list_tags_for_resource(
@@ -254,7 +251,6 @@ def get_all_permission_sets_if_delegate():
                 InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn
             )
-            sleep(0.1)
             description = ''
             try:
                 description = describe_perm_set['PermissionSet']['Description']
@@ -269,7 +265,6 @@ def get_all_permission_sets_if_delegate():
                 MaxResults=100,
             )
             accounts_for_perm_set = list_accounts_for_provisioned_perm_set['AccountIds']
-            sleep(0.1)
             while 'NextToken' in list_accounts_for_provisioned_perm_set:
                 list_accounts_for_provisioned_perm_set = ic_admin.list_accounts_for_provisioned_permission_set(
                     InstanceArn=ic_instance_arn,
@@ -277,7 +272,6 @@ def get_all_permission_sets_if_delegate():
                     MaxResults=100,
                     NextToken=list_accounts_for_provisioned_perm_set['NextToken']
                 )
-                sleep(0.1)
                 accounts_for_perm_set += list_accounts_for_provisioned_perm_set['AccountIds']
             logger.info("Accounts for permission set %s is %s",
                         perm_set_arn, accounts_for_perm_set)
@@ -353,7 +347,6 @@ def create_permission_set(name, desc, tags, session_duration):
             SessionDuration=session_duration,
             Tags=tags
         )
-        sleep(0.1)
     except ic_admin.exceptions.ConflictException as error:
         logger.info("%sThe same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
         sleep(0.5)
@@ -378,7 +371,6 @@ def add_managed_policy_to_perm_set(local_name, perm_set_arn, managed_policy_arn)
         )
         logger.info('Managed Policy %s added to %s',
                     managed_policy_arn, perm_set_arn)
-        sleep(0.1)
     except ic_admin.exceptions.ConflictException as error:
         logger.warning(
             "%s.The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
@@ -403,7 +395,6 @@ def remove_managed_policy_from_perm_set(local_name, perm_set_arn, managed_policy
         )
         logger.info('Managed Policy %s removed \
                     from %s', managed_policy_arn, perm_set_arn)
-        sleep(0.1)
     except ic_admin.exceptions.ConflictException as error:
         logger.warning(
             "%s.The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
@@ -432,7 +423,6 @@ def add_cx_managed_policy_to_perm_set(local_name, perm_set_arn, policy_name,
         )
         logger.info('Customer Managed Policy %s added to %s', policy_path,
                     local_name)
-        sleep(0.1)
     except ic_admin.exceptions.ConflictException as error:
         logger.warning(
             "%s.The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
@@ -460,7 +450,6 @@ def remove_cx_managed_policy_from_perm_set(local_name, perm_set_arn, policy_name
         )
         logger.info('Managed Policy %s removed \
                     from %s', policy_name, local_name)
-        sleep(0.1)
     except ic_admin.exceptions.ConflictException as error:
         logger.info("%s.The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
     except ClientError as error:
@@ -491,8 +480,6 @@ def sync_managed_policies(local_name, local_managed_policies, perm_set_arn):
             InstanceArn=ic_instance_arn,
             PermissionSetArn=perm_set_arn
         )
-        sleep(0.1)
-
         # Populate arrays to track Managed Policy
         for aws_managed_policy in list_managed_policies['AttachedManagedPolicies']:
             aws_managed_attached_names.append(aws_managed_policy['Name'])
@@ -542,8 +529,6 @@ def sync_customer_policies(local_name, local_customer_policies, perm_set_arn):
             InstanceArn=ic_instance_arn,
             PermissionSetArn=perm_set_arn
         )
-        sleep(0.1)
-
         for cx_managed_policy in list_cx_managed_policies['CustomerManagedPolicyReferences']:
             customer_managed_attached_names.append(cx_managed_policy['Name'])
             customer_managed_attached_dict[cx_managed_policy['Name']
@@ -593,8 +578,6 @@ def remove_inline_policies(local_name, perm_set_arn):
             )
             logger.info('Removed inline policy for %s - %s',
                         local_name, perm_set_arn)
-            sleep(0.1)
-
     except ic_admin.exceptions.ConflictException as error:
         logger.warning(
             "%s.The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
@@ -620,8 +603,6 @@ def sync_inline_policies(local_name, local_inline_policy, perm_set_arn):
                 PermissionSetArn=perm_set_arn,
                 InlinePolicy=json.dumps(local_inline_policy)
             )
-            sleep(0.1)
-
         except ic_admin.exceptions.ConflictException as error:
             logger.warning(
                 "%s.The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
@@ -643,8 +624,6 @@ def delete_permission_set(perm_set_arn, perm_set_name):
             PermissionSetArn=perm_set_arn
         )
         logger.info('%s Permission set deleted', perm_set_name)
-        sleep(0.1)
-
     except ic_admin.exceptions.ConflictException as error:
         logger.warning(
             "%sThe same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
@@ -674,7 +653,6 @@ def put_permissions_boundary(local_name, perm_set_arn, boundary_policy):
                     }
                 }
             )
-            sleep(0.1)
         else:
             # AWS managed policy
             ic_admin.put_permissions_boundary_to_permission_set(
@@ -684,7 +662,6 @@ def put_permissions_boundary(local_name, perm_set_arn, boundary_policy):
                     'ManagedPolicyArn': boundary_policy['Arn']
                 }
             )
-            sleep(0.1)
     except ClientError as error:
         error_message = f'Error attaching permission boundary for Permission Set {local_name} - {perm_set_arn}: {error}'
 
@@ -704,7 +681,6 @@ def delete_permissions_boundary(local_name, perm_set_arn):
             InstanceArn=ic_instance_arn,
             PermissionSetArn=perm_set_arn
         )
-        sleep(0.1)
     except ClientError as error:
         error_message = f'Error removing permission boundary from Permission Set {local_name} - {perm_set_arn}: {error}'
 
@@ -778,7 +754,6 @@ def sync_description(local_name, perm_set_arn, local_desc, aws_desc, session_dur
                 SessionDuration=session_duration,
                 Description=local_desc
             )
-            sleep(0.1)
         except ClientError as error:
             logger.warning("%s", error)
         except Exception as error:
@@ -929,7 +904,6 @@ def deprovision_permission_set_from_accounts(perm_set_arn,
                         PrincipalType=assignment['PrincipalType'],
                         PrincipalId=assignment['PrincipalId']
                     )
-                    sleep(0.5)
                     if 'AccountAssignmentDeletionStatus' in delete_assignment and delete_assignment['AccountAssignmentDeletionStatus'].get('RequestId'):
                         request_id = delete_assignment['AccountAssignmentDeletionStatus']['RequestId']
                         complete = False
@@ -946,7 +920,6 @@ def deprovision_permission_set_from_accounts(perm_set_arn,
                                 complete = True
                                 logger.info(
                                     "Delete assignment completed successfully")
-                                sleep(0.5)
                             elif current_status == 'FAILED':
                                 complete = True
                                 failure_reason = status_response['AccountAssignmentDeletionStatus'].get(
@@ -994,7 +967,6 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn):
                 InstanceArn=ic_instance_arn,
                 AccountId=account
             )
-            sleep(0.1)
 
             # If permission set not in list, it was never provisioned
             if perm_set_arn not in provisioned_perm_sets.get('PermissionSets', []):
@@ -1007,7 +979,6 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn):
                 AccountId=account,
                 ProvisioningStatus='LATEST_PERMISSION_SET_NOT_PROVISIONED'
             )
-            sleep(0.1)
             # If permission set in list, it is outdated
             if perm_set_arn in outdated_perm_sets.get('PermissionSets', []):
                 outdated_accounts.append(account)
@@ -1042,7 +1013,6 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn):
                         TargetType='AWS_ACCOUNT',
                         TargetId=account
                     )
-                    sleep(1)
 
                     request_id = provision_response['PermissionSetProvisioningStatus']['RequestId']
                     in_progress = True
@@ -1056,7 +1026,6 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn):
                             logger.info(
                                 f"Provisioning {perm_set_name} completed successfully for account {account}")
                             in_progress = False
-                            sleep(0.5)
                         elif status in ['FAILED', 'CANCELLED']:
                             failure_reason = status_response['PermissionSetProvisioningStatus'].get(
                                 'FailureReason', 'No error details available')
@@ -1064,8 +1033,6 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn):
                             failed_accounts.append(account)
                             log_and_append_error(error_message)
                             in_progress = False
-                            sleep(0.5)
-                        sleep(0.5)
 
                 except Exception as error:
                     error_message = f"Provisioning failed for permission set {perm_set_name} in account {account}: {error}"
@@ -1321,6 +1288,7 @@ def main(event=None):
     try:
         if build_initiator.startswith('rule'):
             event_source = os.getenv("EVENT_SOURCE")
+            # SSO manual changes Event
             if event_source == 'aws.sso' or event_source == 'aws.sso-directory':
                 event_id = os.getenv("EVENT_ID")
                 event_name = os.getenv("EVENT_NAME")
@@ -1331,37 +1299,35 @@ def main(event=None):
                                     CloudTrail Event ID: {event_id}\
                                         Event Source: {event_source}\
                                             Performed by user: {user_identity}')
+                # SSO Directory changes Event
                 if event_source == 'aws.sso-directory':
                     logger.warning(f'This event is generated from source {event_source} and cannot be automatically reverted.\
                                 This build will still run to baseline Permission Sets and assignments.\
                                 However, please confirm that the initiator event {event_name} is legitimate. If not, revert it manually')
             elif event == 'Scheduled Event':
-                # event_source = os.getenv("EVENT_SOURCE")
                 logger.info(f'This build is triggered by EventBridge Scheduler running every 12 hours with the following parameters\
                             Event Type: {event}\
                                 Event Source: {event_source}')
+            # New account created Event
             elif event_source == 'aws.organizations':
                 if event == 'AWS Service Event via CloudTrail':
                     event_id = os.getenv("EVENT_ID")
-                    # event_source = os.getenv("EVENT_SOURCE")
                     event_name = os.getenv("EVENT_NAME")
-                    event_create_account_id = os.getenv("EVENT_CREATE_ACCOUNT_ID")
-                    # event_joined_account_id = os.getenv("EVENT_JOINED_ACCOUNT_ID")
-                    # if event_create_account_id:
-                    #     event_account_id = event_create_account_id
-                    # elif event_joined_account_id:
-                    #     event_account_id = event_joined_account_id
+                    event_create_account_id = os.getenv(
+                        "EVENT_CREATE_ACCOUNT_ID")
                     logger.info(f'This build is triggered by EventBridge with the following parameters:\
                                 Event Type: {event}\
                                     Event Name: {event_name}\
                                         CloudTrail Event ID: {event_id}\
                                             Event Source: {event_source}\
                                                 New AWS account ID: {event_create_account_id}')
+                # Account joined/created/moved Organizations Event
                 elif event == 'AWS API Call via CloudTrail':
                     event_id = os.getenv("EVENT_ID")
                     # event_source = os.getenv("EVENT_SOURCE")
                     event_name = os.getenv("EVENT_NAME")
-                    event_create_account_id = os.getenv("EVENT_CREATE_ACCOUNT_ID")
+                    event_create_account_id = os.getenv(
+                        "EVENT_CREATE_ACCOUNT_ID")
                     party1_id = os.environ.get('PARTY1_ID')
                     party1_type = os.environ.get('PARTY1_TYPE')
                     party2_id = os.environ.get('PARTY2_ID')
@@ -1370,8 +1336,9 @@ def main(event=None):
                         if party1_type == 'ACCOUNT':
                             event_joined_account_id = party1_id
                         elif party2_type == 'ACCOUNT':
-                            event_joined_account_id = party2_id                        
-                    event_moved_account_id = os.getenv("EVENT_MOVED_ACCOUNT_ID")
+                            event_joined_account_id = party2_id
+                    event_moved_account_id = os.getenv(
+                        "EVENT_MOVED_ACCOUNT_ID")
                     event_create_ou_id = os.getenv("EVENT_CREATE_OU_ID")
                     event_create_ou_name = os.getenv("EVENT_CREATE_OU_NAME")
 
@@ -1381,7 +1348,7 @@ def main(event=None):
                         event_account_id = event_joined_account_id
                     elif event_moved_account_id:
                         event_account_id = event_moved_account_id
-                    
+
                     if event_account_id:
                         logger.info(f'This build is triggered by EventBridge with the following parameters:\
                                 Event Type: {event}\
@@ -1389,6 +1356,7 @@ def main(event=None):
                                         CloudTrail Event ID: {event_id}\
                                             Event Source: {event_source}\
                                                 AWS account ID: {event_account_id}')
+                    # OU created Event
                     elif event_create_ou_name:
                         logger.info(f'This build is triggered by EventBridge with the following parameters:\
                                 Event Type: {event}\
