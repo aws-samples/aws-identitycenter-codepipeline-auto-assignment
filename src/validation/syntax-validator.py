@@ -281,9 +281,9 @@ def validate_ic_stacks_parameters(parameters: dict, errors: list, param_file) ->
 
     for param in required_non_empty_params:
         if param not in parameters:
-            log_and_append_error(f"Missing required parameter: {param}")
+            log_and_append_error(f"Missing required parameter: {param}", errors)
         elif not parameters[param]:  # Checks if value is empty string
-            log_and_append_error(f"Parameter {param} cannot be empty")
+            log_and_append_error(f"Parameter {param} cannot be empty", errors)
 
     # Check if Parameters key exists
     if 'Parameters' not in parameters:
