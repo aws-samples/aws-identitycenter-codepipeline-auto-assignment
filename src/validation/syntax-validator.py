@@ -270,6 +270,21 @@ def validate_ic_stacks_parameters(parameters: dict, errors: list, param_file) ->
         'S3KmsArn': str
     }
 
+    required_non_empty_params = [
+        "OrgManagementAccount",
+        "OrganizationId",
+        "IdentityStoreId",
+        "ICInstanceARN",
+        "ICMappingBucketName",
+        "SNSEmailEndpointSubscription"
+    ]
+
+    for param in required_non_empty_params:
+        if param not in parameters:
+            errors.append(f"Missing required parameter: {param}")
+        elif not parameters[param]:  # Checks if value is empty string
+            errors.append(f"Parameter {param} cannot be empty")
+            
     # Check if Parameters key exists
     if 'Parameters' not in parameters:
         log_and_append_error(

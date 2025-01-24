@@ -428,6 +428,7 @@ Resources:
   # AWS Event Bus Policy - To receive Organization event from Management account when Admin delegated #
   #####################################################################################################
   OrgEventsEventBus: 
+    Condition: AdminDelegatedEqualsTrue
     Type: AWS::Events::EventBus
     Properties: 
         Name: !Sub ManagementAccountOrgEvents-${AWS::AccountId}
