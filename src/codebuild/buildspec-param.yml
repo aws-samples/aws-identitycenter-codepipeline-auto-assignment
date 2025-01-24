@@ -31,6 +31,7 @@ phases:
       - cfn_nag_scan --input-path templates/delegate-admin/IC-Delegate-Admin.template
       - cfn_nag_scan --input-path templates/identity-center-s3-bucket.template
       - cfn_nag_scan --input-path templates/identity-center-automation.template
+      - cfn_nag_scan --input-path templates/management-account-org-events-forwarder.template
 
 artifacts:
   files:

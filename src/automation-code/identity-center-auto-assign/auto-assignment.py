@@ -346,7 +346,7 @@ def list_all_current_account_assignment(acct_list, current_aws_permission_sets):
 def drift_detect_update(all_assignments, global_file_contents,
                         target_file_contents, current_aws_permission_sets):
     """Use new mapping information to update IAM Identity Center assignments"""
-    logger.info('Starting assignment drift detection')
+    logger.info('Starting assignment drift detection. This may take some time...')
     check_list = all_assignments
     remove_list = []
     for each_assignment in check_list:
