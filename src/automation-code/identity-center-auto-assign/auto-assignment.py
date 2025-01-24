@@ -5,12 +5,16 @@
 import os
 import json
 import logging
+import re
 import sys
 from time import sleep
+import urllib.parse
 import boto3
 from botocore.exceptions import ClientError
 from botocore.config import Config
 import watchtower
+from typing import List, Dict, Union, Any
+
 
 AWS_CONFIG = Config(
     retries=dict(
@@ -111,6 +115,51 @@ def get_valid_group_id(group_name):
         return None
 
 
+def parse_target_field(target_data: List[Union[Dict[str, List[str]], str]], field_name: str = None) -> List[str]:
+    """
+    Parse the target field (Target or TargetAccountid) that supports OrganizationalUnits and accounts.
+
+    Args:
+        target_data: List containing either:
+            - Plain account IDs as strings
+            - Dict with 'OrganizationalUnits' key containing OU paths
+            - Dict with 'Accounts' key containing account names or account IDs
+        field_name: Name of the field being parsed
+
+    Returns:
+        List of account IDs after resolving OUs and account names/IDs
+    """
+    resolved_accounts = set()
+    logger.debug(f'Parsing {field_name if field_name else "target"} field')
+
+    for target in target_data:
+        if isinstance(target, str):
+            # Direct account ID
+            resolved_accounts.add(target)
+        elif isinstance(target, dict):
+            # Process organizational units
+            if 'OrganizationalUnits' in target:
+                for ou_path in target['OrganizationalUnits']:
+                    accounts = get_accounts_in_ou(ou_path)
+                    resolved_accounts.update(accounts)
+
+            # Process account names/IDs
+            if 'Accounts' in target:
+                for account in target['Accounts']:
+                    # Verify account is an ID (12 digit number)
+                    if re.match(r'^\d{12}$', account):
+                        resolved_accounts.add(account)
+                    else:
+                        account_id = get_account_id_by_name(account)
+                        if account_id:
+                            resolved_accounts.add(account_id)
+                        else:
+                            logger.warning(
+                                f"Could not resolve account name: {account}")
+
+    return list(resolved_accounts)
+
+
 def get_permission_set_arn(permission_set_name, current_aws_permission_sets):
     """Get permission set by name"""
     logger.debug(f"Looking up permission set ARN for: {permission_set_name}")
@@ -156,35 +205,58 @@ def get_account_id_by_name(account_name):
         return None
 
 
-def find_ou_id(parent_id, ou_name):
-    """Recursively search for OU ID by name through all levels"""
+def find_ou_id(parent_id, ou_path):
+    """Find OU ID by path
+
+    Args:
+        parent_id: The parent OU ID to start search from
+        ou_path: Path to the OU (e.g. "ProjectA/Development")
+
+    Returns:
+        OU ID if found, None otherwise
+    """
     try:
+        path_components = [p for p in ou_path.split('/') if p]
+        if not path_components:
+            return None
         paginator = orgs_client.get_paginator(
             'list_organizational_units_for_parent')
 
         for page in paginator.paginate(ParentId=parent_id):
             for ou in page['OrganizationalUnits']:
-                if ou['Name'] == ou_name:
-                    return ou['Id']
-                nested_ou_id = find_ou_id(ou['Id'], ou_name)
-                if nested_ou_id:
-                    return nested_ou_id
+                current_name = path_components[0]
+                if ou['Name'] == current_name:
+                    if len(path_components) == 1:
+                        return ou['Id']
+                    remaining_path = '/'.join(path_components[1:])
+                    nested_ou_id = find_ou_id(ou['Id'], remaining_path)
+                    if nested_ou_id:
+                        return nested_ou_id
         return None
+
     except orgs_client.exceptions.ParentNotFoundException:
         return None
 
 
-def get_accounts_in_ou(ou_name):
-    """Get list of account IDs in an organizational unit by OU name, including nested OUs"""
+def get_accounts_in_ou(ou_path):
+    """Get list of account IDs in an organizational unit by OU path, including nested OUs.
+
+    Args:
+        ou_path: Path to the OU (e.g. "ProjectA/Development")
+
+    Returns:
+        List of account IDs in the OU and its children
+    """
     account_ids = []
     try:
         root_response = orgs_client.list_roots()
         root_id = root_response['Roots'][0]['Id']
 
-        ou_id = find_ou_id(root_id, ou_name)
+        # ou_id will be found either by path or name (with warning for legacy format)
+        ou_id = find_ou_id(root_id, ou_path)
 
         if not ou_id:
-            logger.warning(f"No OU found with name: {ou_name}")
+            logger.warning(f"No OU found with path: {ou_path}")
             return account_ids
 
         def get_all_accounts_in_ou(parent_id):
@@ -210,7 +282,7 @@ def get_accounts_in_ou(ou_name):
 
     except ClientError as error:
         log_and_append_error(
-            f"Error getting accounts for OU {ou_name}: {error}")
+            f"Error getting accounts for OU {ou_path}: {error}")
         return account_ids
     except Exception as error:
         error_message = f'Error occurred: {error}'
@@ -244,9 +316,7 @@ def list_all_current_account_assignment(acct_list, current_aws_permission_sets):
                         account_assignment += response['AccountAssignments']
                         logger.info("Account %s assigment: %s",
                                     account['Id'], response['AccountAssignments'])
-                        sleep(0.1)  # Aviod hitting API limit.
-                    sleep(0.1)
-                    # Eliminate the empty assignment responses.
+                    # Eliminate the empty assignments
                     if len(account_assignment) != 0:
                         for each_assignment in account_assignment:
                             ################################################################
@@ -304,19 +374,21 @@ def drift_detect_update(all_assignments, global_file_contents,
                 account_id = each_assignment['AccountId']
                 target_accounts = []
 
-                for target in target_mapping['TargetAccountid']:
-                    if target.startswith('ou:'):
-                        ou_name = target.split(':')[1].strip()
-                        ou_accounts = get_accounts_in_ou(ou_name)
-                        target_accounts.extend(ou_accounts)
-                    else:
-                        if target.startswith('name:'):
-                            acct_name = target.split(':')[1].strip()
-                            resolved_id = get_account_id_by_name(acct_name)
-                            if resolved_id:
-                                target_accounts.append(resolved_id)
-                        else:
-                            target_accounts.append(target)
+                target_field = target_mapping.get(
+                    'Target', target_mapping.get('TargetAccountid'))
+                if not target_field:
+                    log_and_append_error(
+                        "No Target or TargetAccountid field found in mapping")
+                    continue
+
+                if isinstance(target_field, list):
+                    resolved_accounts = parse_target_field(
+                        target_field, "Target/TargetAccountid")
+                else:
+                    # Handle direct account IDs for backward compatibility
+                    resolved_accounts = parse_target_field(
+                        [target_field], "Target/TargetAccountid")
+                target_accounts = resolved_accounts
 
                 if account_id in target_accounts:
                     for each_perm_set_name in target_mapping['PermissionSetName']:
@@ -370,14 +442,12 @@ def drift_detect_update(all_assignments, global_file_contents,
                             complete = True
                             logger.info(
                                 "Delete assignment completed successfully")
-                            sleep(0.5)
                         elif current_status == 'FAILED':
                             complete = True
                             failure_reason = status_response['AccountAssignmentDeletionStatus'].get(
                                 'FailureReason', 'Unknown')
                             log_and_append_error(
                                 f"Delete assignment failed for permission set {delta_assignment['PermissionSetName']} for account {delta_assignment['AccountId']}. Reason:{failure_reason}")
-                            sleep(0.5)
                 group_name = get_group_name_from_id(
                     delta_assignment['PrincipalId'])
                 if not group_name:
@@ -444,64 +514,6 @@ def get_target_mapping_contents(bucketname, target_mapping_file):
     return json_object
 
 
-def validate_mapping_file_structure(permission_set_file, group_type):
-    """Validate the structure of the permission set mapping file."""
-    logger.info(f"Validating file structure for {group_type} mapping")
-
-    required_keys = {
-        "PermissionSetName": list
-    }
-
-    if group_type == 'global':
-        group_key = 'GlobalGroupName'
-        target_accountid_type = str
-    elif group_type == 'target':
-        group_key = 'TargetGroupName'
-        target_accountid_type = list
-    else:
-        raise ValueError("Invalid group type. Must be 'global' or 'target'.")
-
-    if not isinstance(permission_set_file, list):
-        raise TypeError("The mapping file must be a list")
-
-    for idx, permission_set in enumerate(permission_set_file):
-        if not isinstance(permission_set, dict):
-            raise TypeError(
-                f"Each item in the mapping file must be a dictionary. Item at index {idx} is not a dictionary.")
-
-        if group_key not in permission_set:
-            raise ValueError(
-                f"Missing required key: '{group_key}' in mapping file at index {idx}")
-
-        if not isinstance(permission_set[group_key], str):
-            raise TypeError(
-                f"Key '{group_key}' is not of expected type str at index {idx}")
-
-        for key, expected_type in required_keys.items():
-            if key not in permission_set:
-                raise ValueError(
-                    f"Missing required key: {key} in permission set at index {idx}")
-            if not isinstance(permission_set[key], expected_type):
-                raise TypeError(
-                    f"Key '{key}' is not of expected type {expected_type.__name__} in permission set at index {idx}")
-
-        if "TargetAccountid" not in permission_set:
-            raise ValueError(
-                f"Missing required key: 'TargetAccountid' in mapping at index {idx}")
-
-        if not isinstance(permission_set["TargetAccountid"], target_accountid_type):
-            raise TypeError(
-                f"'TargetAccountid' must be of type {target_accountid_type.__name__} in mapping file at index {idx}")
-
-        if not all(isinstance(item, str) for item in permission_set["PermissionSetName"]):
-            raise ValueError(
-                f"All items in 'PermissionSetName' must be strings in permission sets at index {idx}")
-
-        if group_type == "target" and not all(isinstance(item, str) for item in permission_set["TargetAccountid"]):
-            raise ValueError(
-                f"All items in the list 'TargetAccountid' must be strings in account IDs at index {idx}")
-
-
 def global_group_array_mapping(acct_list, global_file_contents,
                                current_aws_permission_sets):
     """Create global group mapping assignments"""
@@ -513,21 +525,19 @@ def global_group_array_mapping(acct_list, global_file_contents,
             logger.info(
                 f"Account ID: {acct['Id']} is in {acct['Status']} status and will be skipped.")
 
-    # Validate the structure of the global file content
-    try:
-        validate_mapping_file_structure(global_file_contents, group_type)
-    except (ValueError, TypeError) as e:
-        error_message = f"Validation error in global file contents: {e}"
-        log_and_append_error(error_message)
-        return
-
     logger.info("Starting global group assignment")
 
     if global_file_contents:
         for account in acct_list:
             if account['Status'] not in ["SUSPENDED", "PENDING_CLOSURE"]:
                 for index, mapping in enumerate(global_file_contents):
-                    if mapping['TargetAccountid'].upper() == "GLOBAL":
+                    target_field = mapping.get(
+                        'Target', mapping.get('TargetAccountid'))
+                    if not target_field:
+                        logger.warning(
+                            "No Target or TargetAccountid field found in mapping")
+                        continue
+                    if str(target_field).upper() == "GLOBAL":
                         try:
                             logger.debug(
                                 "Processing mapping: %s for account: %s", mapping, account)
@@ -571,14 +581,12 @@ def global_group_array_mapping(acct_list, global_file_contents,
                                             account: %s, \
                                             Group: %s, \
                                             Permission Set: %s", account['Id'], mapping['GlobalGroupName'], mapping['PermissionSetName'])
-                                            sleep(0.5)
                                         elif current_status == 'FAILED':
                                             complete = True
                                             failure_reason = status_response['AccountAssignmentCreationStatus'].get(
                                                 'FailureReason', 'Unknown')
                                             log_and_append_error(
                                                 f"Create assignment failed for permission set {mapping['PermissionSetName']} for account {account['Id']} . Reason: {failure_reason}")
-                                            sleep(0.5)
 
                                 logger.debug("Performed global IAM Identity Center group assigment on \
                                             account: %s, \
@@ -609,7 +617,10 @@ def global_group_array_mapping(acct_list, global_file_contents,
 
 def target_group_array_mapping(acct_list, target_file_contents,
                                current_aws_permission_sets):
-    """Create target group mapping assignments"""
+    """Create target group mapping assignments.
+
+    Supports OrganizationalUnits and accounts objects in TargetAccountid for granular targeting.
+    Uses path-based OU identification to handle nested OUs with same names."""
     logger.info('Starting target mapping assignments')
 
     for acct in acct_list:
@@ -628,50 +639,34 @@ def target_group_array_mapping(acct_list, target_file_contents,
 
     group_type = 'target'
 
-    # Validate the structure of the target file content
-    try:
-        validate_mapping_file_structure(target_file_contents, group_type)
-    except (ValueError, TypeError) as e:
-        error_message = f"Validation error in target file contents: {e}"
-        log_and_append_error(error_message)
-        return
-
     logger.info("Starting target group assignement")
     if target_file_contents:
         try:
             for mapping in target_file_contents:
                 mapping_target_accounts = []
 
-                for target in mapping['TargetAccountid']:
-                    if target.startswith('name:'):
-                        acct_name = target.split(':')[1].strip()
-                        account_id = get_account_id_by_name(acct_name)
-                        if account_id:
-                            for acct in target_accounts:
-                                if acct['Id'] == account_id and acct['Status'] not in ["SUSPENDED", "PENDING_CLOSURE"]:
-                                    mapping_target_accounts.append(account_id)
-                                    break
-                        else:
-                            logger.warning(
-                                f"Could not resolve account name: {acct_name}")
-                    elif target.startswith('ou:'):
-                        ou_name = target.split(':')[1].strip()
-                        ou_account_ids = get_accounts_in_ou(ou_name)
-                        if ou_account_ids:
-                            for account_id in ou_account_ids:
-                                for acct in target_accounts:
-                                    if acct['Id'] == account_id and acct['Status'] not in ["SUSPENDED", "PENDING_CLOSURE"]:
-                                        mapping_target_accounts.append(
-                                            account_id)
-                                        break
-                        else:
-                            logger.warning(
-                                f"No accounts found in OU: {ou_name}")
-                    else:
-                        for acct in target_accounts:
-                            if acct['Id'] == target and acct['Status'] not in ["SUSPENDED", "PENDING_CLOSURE"]:
-                                mapping_target_accounts.append(target)
-                                break
+                # Get target field (support both Target and TargetAccountid)
+                target_field = mapping.get(
+                    'Target', mapping.get('TargetAccountid'))
+                if not target_field:
+                    log_and_append_error(
+                        "No Target or TargetAccountid field found in mapping")
+                    continue
+
+                if isinstance(target_field, list):
+                    resolved_accounts = parse_target_field(
+                        target_field, "Target/TargetAccountid")
+                else:
+                    # Handle direct account IDs for backward compatibility
+                    resolved_accounts = parse_target_field(
+                        [target_field], "Target/TargetAccountid")
+
+                # Filter resolved accounts based on status
+                for account_id in resolved_accounts:
+                    for acct in target_accounts:
+                        if acct['Id'] == account_id and acct['Status'] not in ["SUSPENDED", "PENDING_CLOSURE"]:
+                            mapping_target_accounts.append(account_id)
+                            break
 
                 # Remove duplicates
                 mapping_target_accounts = list(
@@ -679,6 +674,8 @@ def target_group_array_mapping(acct_list, target_file_contents,
 
                 for each_perm_set_name in mapping['PermissionSetName']:
                     for target_account_id in mapping_target_accounts:
+                        logger.info(
+                            "Processing mapping: %s for account: %s", each_perm_set_name, target_account_id)
                         try:
                             permission_set_arn = get_permission_set_arn(
                                 each_perm_set_name, current_aws_permission_sets)
@@ -717,7 +714,6 @@ def target_group_array_mapping(acct_list, target_file_contents,
                                         complete = True
                                         logger.info(
                                             "Create assignment completed successfully")
-                                        sleep(0.5)
                                         logger.info("Performed target IAM Identity Center group assigment on account: %s, \
                                                     Group: %s,  \
                                                     Permission Set: %s",
@@ -729,7 +725,6 @@ def target_group_array_mapping(acct_list, target_file_contents,
                                         error_message = f"Create assignment failed for permission set {mapping['PermissionSetName']} for account {target_account_id}. Reason: {failure_reason}"
                                         log_and_append_error(error_message)
                                         complete = True
-                                        sleep(0.5)
                             logger.debug("Performed target IAM Identity Center group assigment on \
                                             account: %s, \
                                             Group: %s, \
@@ -791,14 +786,12 @@ def get_all_permission_sets():
                 InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn
             )
-            sleep(0.1)
             perm_set_name = describe_perm_set['PermissionSet']['Name']
             perm_set_arn = describe_perm_set['PermissionSet']['PermissionSetArn']
             list_tags = ic_admin.list_tags_for_resource(
                 InstanceArn=ic_instance_arn,
                 ResourceArn=perm_set_arn
             )
-            sleep(0.1)
             tags = list_tags['Tags']
             while 'NextToken' in list_tags:
                 list_tags = ic_admin.list_tags_for_resource(
@@ -861,7 +854,6 @@ def get_all_permission_sets_if_delegate():
                 error_message = f'Permission set {perm_set_name} not found: {error}'
                 log_and_append_error(error_message)
                 continue
-            sleep(0.1)
             perm_set_name = describe_perm_set['PermissionSet']['Name']
             perm_set_arn = describe_perm_set['PermissionSet']['PermissionSetArn']
             list_accounts_for_provisioned_perm_set = ic_admin.list_accounts_for_provisioned_permission_set(
@@ -870,7 +862,6 @@ def get_all_permission_sets_if_delegate():
                 MaxResults=100,
             )
             accounts_for_perm_set = list_accounts_for_provisioned_perm_set['AccountIds']
-            sleep(0.1)
             while 'NextToken' in list_accounts_for_provisioned_perm_set:
                 list_accounts_for_provisioned_perm_set = ic_admin.list_accounts_for_provisioned_permission_set(
                     InstanceArn=ic_instance_arn,
@@ -878,7 +869,6 @@ def get_all_permission_sets_if_delegate():
                     MaxResults=100,
                     NextToken=list_accounts_for_provisioned_perm_set['NextToken']
                 )
-                sleep(0.1)
                 accounts_for_perm_set += list_accounts_for_provisioned_perm_set['AccountIds']
             logger.debug(
                 f"Accounts for permission set {perm_set_arn} is {accounts_for_perm_set}")
@@ -1070,6 +1060,7 @@ def main(event=None):
     try:
         if build_initiator.startswith('rule'):
             event_source = os.getenv("EVENT_SOURCE")
+            # SSO manual changes Event
             if event_source == 'aws.sso' or event_source == 'aws.sso-directory':
                 event_id = os.getenv("EVENT_ID")
                 event_name = os.getenv("EVENT_NAME")
@@ -1080,37 +1071,34 @@ def main(event=None):
                                     CloudTrail Event ID: {event_id}\
                                         Event Source: {event_source}\
                                             Performed by user: {user_identity}')
+                # SSO Directory changes Event
                 if event_source == 'aws.sso-directory':
                     logger.warning(f'This event is generated from source {event_source} and cannot be automatically reverted.\
                                 This build will still run to baseline Permission Sets and assignments.\
                                 However, please confirm that the initiator event {event_name} is legitimate. If not, revert it manually')
             elif event == 'Scheduled Event':
-                # event_source = os.getenv("EVENT_SOURCE")
                 logger.info(f'This build is triggered by EventBridge Scheduler running every 12 hours with the following parameters\
                             Event Type: {event}\
                                 Event Source: {event_source}')
+            # New account created Event
             elif event_source == 'aws.organizations':
                 if event == 'AWS Service Event via CloudTrail':
                     event_id = os.getenv("EVENT_ID")
-                    # event_source = os.getenv("EVENT_SOURCE")
                     event_name = os.getenv("EVENT_NAME")
-                    event_create_account_id = os.getenv("EVENT_CREATE_ACCOUNT_ID")
-                    # event_joined_account_id = os.getenv("EVENT_JOINED_ACCOUNT_ID")
-                    # if event_create_account_id:
-                    #     event_account_id = event_create_account_id
-                    # elif event_joined_account_id:
-                    #     event_account_id = event_joined_account_id
+                    event_create_account_id = os.getenv(
+                        "EVENT_CREATE_ACCOUNT_ID")
                     logger.info(f'This build is triggered by EventBridge with the following parameters:\
                                 Event Type: {event}\
                                     Event Name: {event_name}\
                                         CloudTrail Event ID: {event_id}\
                                             Event Source: {event_source}\
                                                 New AWS account ID: {event_create_account_id}')
+                # Account joined/created/moved Organizations Event
                 elif event == 'AWS API Call via CloudTrail':
                     event_id = os.getenv("EVENT_ID")
-                    # event_source = os.getenv("EVENT_SOURCE")
                     event_name = os.getenv("EVENT_NAME")
-                    event_create_account_id = os.getenv("EVENT_CREATE_ACCOUNT_ID")
+                    event_create_account_id = os.getenv(
+                        "EVENT_CREATE_ACCOUNT_ID")
                     party1_id = os.environ.get('PARTY1_ID')
                     party1_type = os.environ.get('PARTY1_TYPE')
                     party2_id = os.environ.get('PARTY2_ID')
@@ -1119,17 +1107,18 @@ def main(event=None):
                         if party1_type == 'ACCOUNT':
                             event_joined_account_id = party1_id
                         elif party2_type == 'ACCOUNT':
-                            event_joined_account_id = party2_id  
-                    event_moved_account_id = os.getenv("EVENT_MOVED_ACCOUNT_ID")
+                            event_joined_account_id = party2_id
+                    event_moved_account_id = os.getenv(
+                        "EVENT_MOVED_ACCOUNT_ID")
                     event_create_ou_id = os.getenv("EVENT_CREATE_OU_ID")
-                    event_create_ou_name = os.getenv("EVENT_CREATE_OU_NAME")  
+                    event_create_ou_name = os.getenv("EVENT_CREATE_OU_NAME")
                     if event_create_account_id:
                         event_account_id = event_create_account_id
                     elif event_joined_account_id:
                         event_account_id = event_joined_account_id
                     elif event_moved_account_id:
                         event_account_id = event_moved_account_id
-                    
+
                     if event_account_id:
                         logger.info(f'This build is triggered by EventBridge with the following parameters:\
                                 Event Type: {event}\
@@ -1137,6 +1126,7 @@ def main(event=None):
                                         CloudTrail Event ID: {event_id}\
                                             Event Source: {event_source}\
                                                 AWS account ID: {event_account_id}')
+                    # OU created Event
                     elif event_create_ou_name:
                         logger.info(f'This build is triggered by EventBridge with the following parameters:\
                                 Event Type: {event}\

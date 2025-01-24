@@ -9,6 +9,7 @@ phases:
   pre_build:
     commands:
       - echo "Installing dependencies"
+      - apt update
       - apt-get install python3-pip -y -q
       - pip install -q boto3 botocore
       - echo 'The source artifact location is:' $CODEBUILD_SOURCE_VERSION

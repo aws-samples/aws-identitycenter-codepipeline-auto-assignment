@@ -4,20 +4,20 @@
          "PermissionSetName": [
              "1-example-admin"
          ],
-         "TargetAccountid": "Global"
+         "Target": "Global"
      },
      {
          "GlobalGroupName": "Example_Group_2",
          "PermissionSetName": [
              "2-example-readonly"
          ],
-         "TargetAccountid": "Global"
+         "Target": "Global"
      },
      {
          "GlobalGroupName": "Example_Group_3",
          "PermissionSetName": [
              "3-example-billing"
          ],
-         "TargetAccountid": "Global"
+         "Target": "Global"
      }
  ]

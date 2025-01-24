@@ -33,12 +33,6 @@ def is_valid_arn(arn: str) -> bool:
     pattern = r'^arn:aws:iam::(?:\d{12}|aws):policy/(?:job-function/|service-role/)?[a-zA-Z0-9+=,.@-_/]+$'
     return bool(re.match(pattern, arn))
 
-# def is_valid_iam_role_arn(arn: str) -> bool:
-#     """Validate AWS IAM Role ARN format"""
-#     if not arn:
-#         return False
-#     pattern = r'^arn:aws:iam::\d{12}:role/[a-zA-Z0-9+=,.@-_/]+$'
-#     return bool(re.match(pattern, arn))
 
 def is_valid_iam_role_arn(arn: str) -> bool:
     """
@@ -47,15 +41,14 @@ def is_valid_iam_role_arn(arn: str) -> bool:
     """
     if not arn:
         return False
-    
+
     pattern = (
         r'^arn:aws:iam::\d{12}:role/'
         r'(?:aws-service-role/[a-z0-9.-]+\.amazonaws\.com/)?'
         r'[a-zA-Z0-9+=,.@_-]{1,64}$'
     )
-    
-    return bool(re.match(pattern, arn))
 
+    return bool(re.match(pattern, arn))
 
 
 def is_valid_ic_instance_arn(arn: str) -> bool:
@@ -64,6 +57,7 @@ def is_valid_ic_instance_arn(arn: str) -> bool:
         return False
     pattern = r'^arn:(aws|aws-us-gov|aws-cn|aws-iso|aws-iso-b):sso:::instance/(sso)?ins-[a-zA-Z0-9-.]{16}$'
     return bool(re.match(pattern, arn))
+
 
 def is_valid_kms_key_arn(arn: str) -> bool:
     """Validate AWS KMS Key ARN format"""
@@ -250,11 +244,9 @@ def validate_session_duration(duration: str) -> bool:
 def validate_account_id(account_id: str) -> bool:
     """
     Validate AWS account ID format.
-    Must be 12 digits (no leading zeros), "Global" for global mappings, start with "name:" for account names and "ou:" for organization units.
+    Must be 12 digits (no leading zeros) or "Global" for global mappings.
     """
     if account_id == "Global":
-        return True
-    if account_id.startswith('name:') or account_id.startswith('ou:'):
         return True
     return bool(re.match(r'^\d{12}$', account_id))
 
@@ -280,7 +272,8 @@ def validate_ic_stacks_parameters(parameters: dict, errors: list, param_file) ->
 
     # Check if Parameters key exists
     if 'Parameters' not in parameters:
-        log_and_append_error(f"Missing 'Parameters' key in {param_file}", errors)
+        log_and_append_error(
+            f"Missing 'Parameters' key in {param_file}", errors)
         return
 
     params = parameters['Parameters']
@@ -288,73 +281,93 @@ def validate_ic_stacks_parameters(parameters: dict, errors: list, param_file) ->
     # Check all required parameters exist and have correct type
     for param, param_type in required_params.items():
         if param not in params:
-            log_and_append_error(f"Missing required parameter '{param}' in {param_file}", errors)
+            log_and_append_error(
+                f"Missing required parameter '{param}' in {param_file}", errors)
         elif not isinstance(params[param], param_type):
-            log_and_append_error(f"Parameter '{param}' must be of type {param_type.__name__} in {param_file}", errors)
+            log_and_append_error(
+                f"Parameter '{param}' must be of type {param_type.__name__} in {param_file}", errors)
 
     # Validate boolean values
-    bool_params = ['AdminDelegated', 'ControlTowerEnabled', 'createICAdminRole', 'createICKMSAdminRole', 'createS3KmsKey']
+    bool_params = ['AdminDelegated', 'ControlTowerEnabled',
+                   'createICAdminRole', 'createICKMSAdminRole', 'createS3KmsKey']
     for param in bool_params:
         if param in params and params[param] not in ['true', 'false']:
-            log_and_append_error(f"Parameter '{param}' must be 'true' or 'false' in {param_file}", errors)
+            log_and_append_error(
+                f"Parameter '{param}' must be 'true' or 'false' in {param_file}", errors)
 
     # Validate Identity Center Instance ARN
     if params.get('ICInstanceARN') and not is_valid_ic_instance_arn(params['ICInstanceARN']):
-        log_and_append_error(f"Invalid Identity Center Instance ARN format for parameter 'ICInstanceARN' in {param_file}", errors)
-    
+        log_and_append_error(
+            f"Invalid Identity Center Instance ARN format for parameter 'ICInstanceARN' in {param_file}", errors)
+
     # Validate IAM Role ARNs
     iam_role_arns = ['ICAutomationAdminArn', 'ICKMSAdminArn']
     for param in iam_role_arns:
         if params.get(param) and not is_valid_iam_role_arn(params[param]):
-            log_and_append_error(f"Invalid IAM Role ARN format for parameter '{param}' in {param_file}", errors)
-    
+            log_and_append_error(
+                f"Invalid IAM Role ARN format for parameter '{param}' in {param_file}", errors)
+
     # Validate KMS Key ARN
     if params.get('S3KmsArn') and not is_valid_kms_key_arn(params['S3KmsArn']):
-        log_and_append_error(f"Invalid KMS Key ARN format for parameter 'S3KmsArn' in {param_file}", errors)
-    
+        log_and_append_error(
+            f"Invalid KMS Key ARN format for parameter 'S3KmsArn' in {param_file}", errors)
+
     # Validate OrgManagementAccount (12 digit account ID)
     if params.get('OrgManagementAccount'):
         if not bool(re.match(r'^[0-9]{12}$', params['OrgManagementAccount'])):
-            log_and_append_error(f"Invalid AWS account ID format for parameter 'OrgManagementAccount' in {param_file}. Must be 12 digits.", errors)
-    
+            log_and_append_error(
+                f"Invalid AWS account ID format for parameter 'OrgManagementAccount' in {param_file}. Must be 12 digits.", errors)
+
     # Validate OrganizationId (o-followed by 10-32 characters)
     if params.get('OrganizationId'):
         if not bool(re.match(r'^o-[a-z0-9]{10,32}$', params['OrganizationId'])):
-            log_and_append_error(f"Invalid Organization ID format for parameter 'OrganizationId' in {param_file}. Must start with 'o-' followed by 10-32 alphanumeric characters.", errors)
-    
+            log_and_append_error(
+                f"Invalid Organization ID format for parameter 'OrganizationId' in {param_file}. Must start with 'o-' followed by 10-32 alphanumeric characters.", errors)
+
     # Validate IdentityStoreId (10-32 character alphanumeric string)
     if params.get('IdentityStoreId'):
         if not bool(re.match(r'^[a-z0-9-]{10,32}$', params['IdentityStoreId'])):
-            log_and_append_error(f"Invalid Identity Store ID format for parameter 'IdentityStoreId' in {param_file}. Must be 10-32 alphanumeric characters or hyphens.", errors)
-    
+            log_and_append_error(
+                f"Invalid Identity Store ID format for parameter 'IdentityStoreId' in {param_file}. Must be 10-32 alphanumeric characters or hyphens.", errors)
+
     # Validate SNSEmailEndpointSubscription (valid email format)
     if params.get('SNSEmailEndpointSubscription'):
         if not bool(re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', params['SNSEmailEndpointSubscription'])):
-            log_and_append_error(f"Invalid email format for parameter 'SNSEmailEndpointSubscription' in {param_file}.", errors)
-    
+            log_and_append_error(
+                f"Invalid email format for parameter 'SNSEmailEndpointSubscription' in {param_file}.", errors)
+
     # Validate createICAdminRole and ICAutomationAdminArn relationship
     if params.get('createICAdminRole') == 'true' and params.get('ICAutomationAdminArn'):
-        log_and_append_error(f"ICAutomationAdminArn must be empty when createICAdminRole is true in {param_file}", errors)
+        log_and_append_error(
+            f"ICAutomationAdminArn must be empty when createICAdminRole is true in {param_file}", errors)
     elif params.get('ICAutomationAdminArn') and params.get('createICAdminRole') == 'true':
-        log_and_append_error(f"createICAdminRole must be false when ICAutomationAdminArn has a value in {param_file}", errors)
+        log_and_append_error(
+            f"createICAdminRole must be false when ICAutomationAdminArn has a value in {param_file}", errors)
     elif params.get('createICAdminRole') == 'false' and not params.get('ICAutomationAdminArn'):
-        log_and_append_error(f"ICAutomationAdminArn must have a value when createICAdminRole is false in {param_file}", errors)
+        log_and_append_error(
+            f"ICAutomationAdminArn must have a value when createICAdminRole is false in {param_file}", errors)
 
     # Validate createICKMSAdminRole and ICKMSAdminArn relationship
     if params.get('createICKMSAdminRole') == 'true' and params.get('ICKMSAdminArn'):
-        log_and_append_error(f"ICKMSAdminArn must be empty when createICKMSAdminRole is true in {param_file}", errors)
+        log_and_append_error(
+            f"ICKMSAdminArn must be empty when createICKMSAdminRole is true in {param_file}", errors)
     elif params.get('ICKMSAdminArn') and params.get('createICKMSAdminRole') == 'true':
-        log_and_append_error(f"createICKMSAdminRole must be false when ICKMSAdminArn has a value in {param_file}", errors)
+        log_and_append_error(
+            f"createICKMSAdminRole must be false when ICKMSAdminArn has a value in {param_file}", errors)
     elif params.get('createICKMSAdminRole') == 'false' and not params.get('ICKMSAdminArn'):
-        log_and_append_error(f"ICKMSAdminArn must have a value when createICKMSAdminRole is false in {param_file}", errors)
+        log_and_append_error(
+            f"ICKMSAdminArn must have a value when createICKMSAdminRole is false in {param_file}", errors)
 
     # Validate createS3KmsKey and S3KmsArn relationship
     if params.get('createS3KmsKey') == 'true' and params.get('S3KmsArn'):
-        log_and_append_error(f"S3KmsArn must be empty when createS3KmsKey is true in {param_file}", errors)
+        log_and_append_error(
+            f"S3KmsArn must be empty when createS3KmsKey is true in {param_file}", errors)
     elif params.get('S3KmsArn') and params.get('createS3KmsKey') == 'true':
-        log_and_append_error(f"createS3KmsKey must be false when S3KmsArn has a value in {param_file}", errors)
+        log_and_append_error(
+            f"createS3KmsKey must be false when S3KmsArn has a value in {param_file}", errors)
     elif params.get('createS3KmsKey') == 'false' and not params.get('S3KmsArn'):
-        log_and_append_error(f"S3KmsArn must have a value when createS3KmsKey is false in {param_file}", errors)
+        log_and_append_error(
+            f"S3KmsArn must have a value when createS3KmsKey is false in {param_file}", errors)
 
 
 def validate_permission_set_name(name: str) -> bool:
@@ -362,7 +375,6 @@ def validate_permission_set_name(name: str) -> bool:
     Validate permission set name.
     Must be 1-32 characters, alphanumeric and [-_] only.
     """
-    # return bool(re.match(r'^[\w-]{1,32}$', name))
     return bool(re.match(r'^[\w+=,.@-]{1,32}$', name))
 
 
@@ -402,7 +414,7 @@ def validate_permission_set_schema(permission_set, errors):
     """
     Validate the permission set schema including format validations.
     """
-    logger.info(f"Validating permission set schema for {permission_set}")
+    logger.info(f"Validating permission set schema for {permission_set['Name']}")
 
     required_keys = {
         "Name": str,
@@ -577,15 +589,65 @@ def validate_mapping_file_structure(permission_set_file, group_type, errors):
                          for item in items)
         has_list = any(isinstance(item.get('PermissionSetName'), list)
                        for item in items)
-        return not (has_string and has_list)  # Should not have both formats
+        return not (has_string and has_list)
+
+    def validate_target_account_entry(entry, idx):
+        """Validate a single entry in the Target/TargetAccountid list"""
+        if isinstance(entry, str):
+            # Direct account ID validation
+            if not validate_account_id(entry):
+                log_and_append_error(
+                    f"Invalid Target/TargetAccountid '{entry}' at index {idx}. Must be a valid 12-digit AWS account ID", errors)
+        elif isinstance(entry, dict):
+            # Validate that only allowed keys are present
+            allowed_keys = {'OrganizationalUnits', 'Accounts'}
+            actual_keys = set(entry.keys())
+            invalid_keys = actual_keys - allowed_keys
+            if invalid_keys:
+                log_and_append_error(
+                    f"Invalid keys {invalid_keys} found at index {idx}. Only 'OrganizationalUnits' and 'Accounts' are allowed", errors)
+
+            if not actual_keys:
+                log_and_append_error(
+                    f"Empty dictionary at index {idx}. Must contain either 'OrganizationalUnits' or 'Accounts'", errors)
+
+            # Organizational units validation
+            if 'OrganizationalUnits' in entry:
+                if not isinstance(entry['OrganizationalUnits'], list):
+                    log_and_append_error(
+                        f"'OrganizationalUnits' must be a list at index {idx}", errors)
+                else:
+                    for ou_path in entry['OrganizationalUnits']:
+                        if not isinstance(ou_path, str):
+                            log_and_append_error(
+                                f"OU path must be a string at index {idx}", errors)
+
+            # Accounts validation
+            if 'Accounts' in entry:
+                if not isinstance(entry['Accounts'], list):
+                    log_and_append_error(
+                        f"'Accounts' must be a list at index {idx}", errors)
+                else:
+                    for account in entry['Accounts']:
+                        if not isinstance(account, str):
+                            log_and_append_error(
+                                f"Account identifier must be a string at index {idx}", errors)
+                        elif account.isdigit():
+                            if not validate_account_id(account):
+                                log_and_append_error(
+                                    f"Invalid account ID '{account}' at index {idx}", errors)
+        else:
+            log_and_append_error(
+                f"Invalid TargetAccountid entry type at index {idx}. Must be either a string or dictionary", errors)
     """
     Validate the structure of the permission set mapping file.
+    New format supporting Organizational Unit names and paths, and account names:
     Example of valid global mapping:
     [
         {
             "GlobalGroupName": "Admin_Group",
             "PermissionSetName": ["example-admin"],
-            "TargetAccountid": "Global"
+            "Target": "Global"
         }
     ]
     Example of valid target mapping:
@@ -593,12 +655,58 @@ def validate_mapping_file_structure(permission_set_file, group_type, errors):
         {
             "TargetGroupName": "Dev_Group",
             "PermissionSetName": ["dev-access"],
-            "TargetAccountid": ["123456789012"]
+            "Target": [
+                "123456789012",
+                {
+                    "OrganizationalUnits": [
+                        "Production",
+                        "Development",
+                        "ProductA/Development
+                    ]
+                },
+                {
+                    "Accounts": [
+                        "123456789012",
+                        "Audit Account"
+                    ]
+                }
+            ]
         }
     ]
-    """
-    """
-    Validate the structure of the permission set mapping file.
+
+    Old (legacy) format for account Ids only, but now supporting Organizational Unit names and paths, and account names, with backwards compatibility:
+    
+    Example of valid global mapping:
+    [
+        {
+            "GlobalGroupName": "Admin_Group",
+            "PermissionSetName": ["example-admin"],
+            "Target": "Global"
+        }
+    ]
+    Example of valid target mapping:
+    [
+        {
+            "TargetGroupName": "Dev_Group",
+            "PermissionSetName": ["dev-access"],
+            "Target": [
+                "123456789012",
+                {
+                    "OrganizationalUnits": [
+                        "Production",
+                        "Development",
+                        "ProductA/Development
+                    ]
+                },
+                {
+                    "Accounts": [
+                        "123456789012",
+                        "Audit Account"
+                    ]
+                }
+            ]
+        }
+    ]
     """
     logger.info(f"Validating file structure for {group_type} mapping")
 
@@ -609,21 +717,28 @@ def validate_mapping_file_structure(permission_set_file, group_type, errors):
     if group_type == 'global':
         group_key = 'GlobalGroupName'
         target_accountid_type = str
-        # In global mapping, TargetAccountid must be "Global"
+        # In global mapping, Target/TargetAccountid must be "Global"
         for idx, item in enumerate(permission_set_file):
-            if item.get('TargetAccountid') != 'Global':
+            target_key = item.get('Target', item.get('TargetAccountid'))
+            if target_key != 'Global':
                 log_and_append_error(
-                    f"Global mapping must use 'Global' for TargetAccountid at index {idx}", errors)
+                    f"Global mapping must use 'Global' for Target/TargetAccountid at index {idx}", errors)
     elif group_type == 'target':  # target
         group_key = 'TargetGroupName'
         target_accountid_type = list
-        # In target mapping, TargetAccountid must never be "Global"
+        # In target mapping, Target/TargetAccountid must never be "Global"
         for idx, item in enumerate(permission_set_file):
-            if isinstance(item.get('TargetAccountid'), list):
-                if 'Global' in item['TargetAccountid']:
+            target_accountid = item.get('TargetAccountid')
+            target = item.get('Target')
+            if isinstance(target_accountid, list):
+                if 'Global' in target_accountid:
                     log_and_append_error(
-                        f"Target mapping cannot use 'Global' for TargetAccountid at index {idx}", errors)
-            elif item.get('TargetAccountid') == 'Global':
+                        f"Target mapping cannot use 'Global' for Target/TargetAccountid at index {idx}", errors)
+            elif isinstance(target, list):
+                if 'Global' in target:
+                    log_and_append_error(
+                        f"Target mapping cannot use 'Global' for Target/TargetAccountid at index {idx}", errors)
+            elif target_accountid == 'Global' or target == 'Global':
                 log_and_append_error(
                     f"Target mapping cannot use 'Global' for TargetAccountid at index {idx}", errors)
 
@@ -645,7 +760,7 @@ def validate_mapping_file_structure(permission_set_file, group_type, errors):
         if group_key not in permission_set:
             log_and_append_error(
                 f"Missing required key: '{group_key}' in mapping file at index {idx}", errors)
-        group_name = permission_set[group_key]
+        group_name = permission_set.get(group_key)
         is_valid, msg = validate_whitespace(group_name, group_key)
         if not is_valid:
             log_and_append_error(f"{msg} at index {idx}", errors)
@@ -662,23 +777,23 @@ def validate_mapping_file_structure(permission_set_file, group_type, errors):
                 log_and_append_error(
                     f"Key '{key}' is not of expected type {expected_type.__name__} in permission set at index {idx}", errors)
 
-        if "TargetAccountid" not in permission_set:
+        target_field = permission_set.get(
+            'Target', permission_set.get('TargetAccountid'))
+        if not target_field:
             log_and_append_error(
-                f"Missing required key: 'TargetAccountid' in mapping at index {idx}", errors)
+                f"Missing required key: either 'Target' or 'TargetAccountid' in mapping at index {idx}", errors)
 
-        elif not isinstance(permission_set["TargetAccountid"], target_accountid_type):
+        elif not isinstance(target_field, target_accountid_type):
             log_and_append_error(
-                f"'TargetAccountid' must be of type {target_accountid_type.__name__} in mapping file at index {idx}", errors)
+                f"'Target/TargetAccountid' must be of type {target_accountid_type.__name__} in mapping file at index {idx}", errors)
 
-        elif isinstance(permission_set["TargetAccountid"], str):
-            if not validate_account_id(permission_set["TargetAccountid"]):
+        elif isinstance(target_field, str):
+            if not validate_account_id(target_field):
                 log_and_append_error(
-                    f"Invalid TargetAccountid '{permission_set['TargetAccountid']}' at index {idx}. Must be a list with 12 digit account Id, account name with 'name:' prefix, and OU name with 'ou:' prefix, for target mapping, or 'Global' string for global mapping", errors)
-        elif isinstance(permission_set["TargetAccountid"], list):
-            for account_id in permission_set["TargetAccountid"]:
-                if not validate_account_id(account_id):
-                    log_and_append_error(
-                        f"Invalid TargetAccountid '{account_id}' at index {idx}. Must be a list with 12 digit account Id, account name with 'name:' prefix, and OU name with 'ou:' prefix, for target mapping, or 'Global' string for global mapping", errors)
+                    f"Invalid Target/TargetAccountid '{target_field}' at index {idx}. Must be a list with 12 digit account Id, account name(s) in a list in a dict with 'accounts' key, and OU name/path in a list in a dict with 'OrganizationalUnits' key, for target mapping, OR 'Global' string for global mapping", errors)
+        elif isinstance(target_field, list):
+            for entry in target_field:
+                validate_target_account_entry(entry, idx)
 
         if "PermissionSetName" in permission_set:
             if not all(isinstance(item, str) for item in permission_set["PermissionSetName"]):
@@ -688,9 +803,14 @@ def validate_mapping_file_structure(permission_set_file, group_type, errors):
                 validate_permission_set_references(
                     permission_set["PermissionSetName"], errors)
 
-        if group_type == "target" and "TargetAccountid" in permission_set and not all(isinstance(item, str) for item in permission_set["TargetAccountid"]):
-            log_and_append_error(
-                f"All items in the list 'TargetAccountid' must be strings in account IDs at index {idx}", errors)
+        # Handle target account validation based on mapping type
+        if group_type == "target":
+            # Get target field (support both Target and TargetAccountid)
+            target_field = permission_set.get(
+                'Target', permission_set.get('TargetAccountid'))
+            if target_field and isinstance(target_field, list):
+                for entry in target_field:
+                    validate_target_account_entry(entry, idx)
 
 
 def validate_all_files():
@@ -709,7 +829,8 @@ def validate_all_files():
             with open('identity-center-stacks-parameters.json', 'r') as file:
                 try:
                     parameters = json.load(file)
-                    validate_ic_stacks_parameters(parameters, errors, param_file)
+                    validate_ic_stacks_parameters(
+                        parameters, errors, param_file)
                     logger.info(f"Completed validation of {param_file}")
                 except json.JSONDecodeError as e:
                     log_and_append_error(

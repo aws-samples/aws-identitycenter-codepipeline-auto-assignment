@@ -4,35 +4,53 @@
       "PermissionSetName":[
          "4-example-operations"
       ],
-      "TargetAccountid":[
-         "ou:Sandbox"
-      ]
+      "Target": [
+            {
+                "OrganizationalUnits": [
+                    "Sandbox"
+                ]
+            }
+        ]
    },
    {
       "TargetGroupName":"Example_Group_5",
       "PermissionSetName":[
          "5-example-sec-readonly"
       ],
-      "TargetAccountid":[
-         "098765432101",
-         "name:Audit"
-      ]
+      "Target": [
+            {
+                "Accounts": [
+                    "Audit"
+                ]
+            },
+            "098765432101"
+        ]
    },
    {
       "TargetGroupName":"Example_Group_1",
       "PermissionSetName":[
          "6-example-cx-managed-policy-boundary"
       ],
-      "TargetAccountid":[
-         "123456789012"
-      ]
+      "Target": [
+            {
+                "OrganizationalUnits": [
+                    "Infrastructure/Infra-Dev",
+                    "Development"
+                ]
+            },
+            {
+                "Accounts": [
+                    "Shared_Services"
+                ]
+            }
+        ]
    },
    {
       "TargetGroupName":"Example_Group_2",
       "PermissionSetName":[
          "7-example-aws-managed-policy-boundary"
       ],
-      "TargetAccountid":[
+      "Target":[
          "384142793104"
       ]
    }
