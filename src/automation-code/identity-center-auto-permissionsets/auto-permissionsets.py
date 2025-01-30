@@ -24,6 +24,8 @@ AWS_CONFIG = Config(
 runtime_region = os.getenv('AWS_REGION')
 ic_bucket_name = os.getenv('IC_S3_BucketName')
 s3 = boto3.resource('s3', config=AWS_CONFIG)
+orgs_client = boto3.client(
+    'organizations', region_name=runtime_region, config=AWS_CONFIG)
 sns_client = boto3.client('sns', region_name=runtime_region, config=AWS_CONFIG)
 ic_admin = boto3.client(
     'sso-admin', region_name=runtime_region, config=AWS_CONFIG)
@@ -838,8 +840,36 @@ def sync_tags(local_name, local_tags, perm_set_arn):
         log_and_append_error(error_message)
 
 
+def get_active_accounts_map():
+    """Get a map of all accounts and their active status"""
+    account_status_map = {}
+    try:
+        paginator = orgs_client.get_paginator('list_accounts')
+        for page in paginator.paginate():
+            for account in page['Accounts']:
+                account_status_map[account['Id']] = account['Status'] == 'ACTIVE'
+        return account_status_map
+    except Exception as error:
+        logger.warning(f"Error fetching account statuses: {error}")
+        return {}
+
+def is_account_active(account_id, account_status_map=None):
+    """Check if the AWS account is active (not suspended or pending closure)"""
+    if account_status_map is None:
+        # If no map is provided, fall back to single account check
+        try:
+            response = orgs_client.describe_account(AccountId=account_id)
+            status = response['Account']['Status']
+            return status == 'ACTIVE'
+        except Exception as error:
+            logger.warning(f"Error checking account status for {account_id}: {error}")
+            return False
+    
+    return account_status_map.get(account_id, False)
+
+
 def get_accounts_by_perm_set(perm_set_arn):
-    """List all the accounts for a given permission set"""
+    """List all the active accounts for a given permission set"""
     try:
         response = ic_admin.list_accounts_for_provisioned_permission_set(
             InstanceArn=ic_instance_arn,
@@ -853,7 +883,16 @@ def get_accounts_by_perm_set(perm_set_arn):
                 PermissionSetArn=perm_set_arn
             )
             acct_list += response['AccountIds']
-        logger.debug(acct_list)
+
+        # Get account statuses once for all accounts
+        account_status_map = get_active_accounts_map()
+        
+        # Filter out suspended or closed accounts using the cached map
+        active_acct_list = [
+            acct for acct in acct_list if is_account_active(acct, account_status_map)]
+        logger.debug(f"All accounts: {acct_list}")
+        logger.debug(f"Active accounts: {active_acct_list}")
+        return active_acct_list
 
     except ClientError as error:
         error_message = f'Client error occurred: {error}'
@@ -861,7 +900,7 @@ def get_accounts_by_perm_set(perm_set_arn):
     except Exception as error:
         error_message = f'Error occurred: {error}'
         log_and_append_error(error_message)
-    return acct_list
+    return []
 
 
 def deprovision_permission_set_from_accounts(perm_set_arn,
