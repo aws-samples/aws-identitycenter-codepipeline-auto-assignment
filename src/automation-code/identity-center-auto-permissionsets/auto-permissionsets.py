@@ -30,7 +30,7 @@ sns_client = boto3.client('sns', region_name=runtime_region, config=AWS_CONFIG)
 ic_admin = boto3.client(
     'sso-admin', region_name=runtime_region, config=AWS_CONFIG)
 ic_instance_arn = os.getenv('IC_InstanceArn')
-default_session_duration = os.getenv('Session_Duration')
+default_session_duration = 'PT1H'
 management_account_id = os.getenv('Org_Management_Account')
 delegated = os.getenv('AdminDelegated')
 dynamodb = boto3.client(
