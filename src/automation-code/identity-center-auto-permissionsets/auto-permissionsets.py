@@ -1178,7 +1178,7 @@ def sync_json_with_aws(local_files, aws_permission_sets):
             local_customer_policies = local_permission_set.get(
                 'CustomerPolicies', [])
             local_session_duration = local_permission_set.get(
-                'Session_Duration', [])
+                'Session_Duration', default_session_duration)
             local_boundary = local_permission_set.get(
                 'PermissionsBoundary', [])
 
