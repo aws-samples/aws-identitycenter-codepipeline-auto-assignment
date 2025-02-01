@@ -18,8 +18,6 @@ logger.setLevel(logging.INFO)
 
 # Stream handler to print logs on screen
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
@@ -58,19 +56,30 @@ ic_instance_arn = os.getenv('IC_INSTANCE_ARN')
 identity_store_id = os.getenv('IDENTITY_STORE_ID')
 
 
-def is_delegated_admin():
+# Global variables to store delegated admin status and management account ID
+IS_DELEGATED = None
+MANAGEMENT_ACCOUNT_ID = None
+skip_management_perm_sets = set()
+
+
+def initialize_global_vars():
+    """Initialize global variables for delegated admin status and management account ID"""
+    global IS_DELEGATED, MANAGEMENT_ACCOUNT_ID, skip_management_perm_sets
+    skip_management_perm_sets = set()
     try:
-        management_account_id = organizations.describe_organization()[
-            'Organization']['MasterAccountId']
-        delegated_admin = sts_client.get_caller_identity(
-        )['Account'] != management_account_id
-        if delegated_admin:
+        org_response = organizations.describe_organization()
+        MANAGEMENT_ACCOUNT_ID = org_response['Organization']['MasterAccountId']
+        IS_DELEGATED = sts_client.get_caller_identity(
+        )['Account'] != MANAGEMENT_ACCOUNT_ID
+        if IS_DELEGATED:
             logger.info("Running in delegated admin account")
-            return True
-        return False
     except Exception as e:
-        logger.error(f"Error checking delegated admin status: {str(e)}")
-        return False
+        logger.error(f"Error initializing global variables: {str(e)}")
+        IS_DELEGATED = False
+        MANAGEMENT_ACCOUNT_ID = None
+
+
+console_handler.setLevel(logging.INFO)
 
 
 def get_permission_set_details(perm_set_arn):
@@ -227,6 +236,7 @@ def get_account_assignments():
     group_display_names = {}
     accounts = []
     active_account_ids = set()
+    global skip_management_perm_sets  # Use global variables
 
     def get_account_name(acc_id):
         account_name = next((acc['Name']
@@ -241,10 +251,8 @@ def get_account_assignments():
             return None
 
     try:
-        management_account_id = organizations.describe_organization()[
-            'Organization']['MasterAccountId']
         mgmt_acc = organizations.describe_account(
-            AccountId=management_account_id)['Account']
+            AccountId=MANAGEMENT_ACCOUNT_ID)['Account']
         accounts.append(mgmt_acc)
         account_name_cache[mgmt_acc['Id']] = mgmt_acc['Name']
         if mgmt_acc['Status'] != 'SUSPENDED':
@@ -254,7 +262,7 @@ def get_account_assignments():
         for page in accounts_paginator.paginate():
             sleep(0.1)
             for account in page['Accounts']:
-                if account['Id'] == management_account_id:
+                if account['Id'] == MANAGEMENT_ACCOUNT_ID:
                     continue
                 accounts.append(account)
                 account_name_cache[account['Id']] = account['Name']
@@ -321,6 +329,14 @@ def get_account_assignments():
                         assignments.extend(assignments_response.get(
                             'AccountAssignments', []))
 
+                    # If this is the management account and we're in delegated mode,
+                    # mark this permission set to be skipped if it has any assignments
+                    if IS_DELEGATED and account_id == MANAGEMENT_ACCOUNT_ID and assignments:
+                        skip_management_perm_sets.add(perm_set_arn)
+                        logger.info(
+                            f"Marking permission set {perm_set_name} to be skipped (provisioned in management account)")
+                        continue
+
                     for assignment in assignments:
                         if assignment['PrincipalType'] != 'GROUP':
                             continue
@@ -336,6 +352,10 @@ def get_account_assignments():
 
                         if group_name not in assignments_by_group:
                             assignments_by_group[group_name] = {}
+
+                        # Skip if this permission set is provisioned in management account
+                        if IS_DELEGATED and perm_set_arn in skip_management_perm_sets:
+                            continue
 
                         if perm_set_name not in assignments_by_group[group_name]:
                             assignments_by_group[group_name][perm_set_name] = set(
@@ -366,6 +386,14 @@ def get_account_assignments():
             target_perm_sets = {}
 
             for curr_perm_set_name, assigned_accounts in perm_sets_data.items():
+                # Skip if this permission set is in the skip list (management account permission sets)
+                curr_perm_set_arn = next((arn for arn in all_perm_sets if perm_set_cache.get(
+                    arn) == curr_perm_set_name), None)
+                if curr_perm_set_arn in skip_management_perm_sets:
+                    logger.info(
+                        f"Skipping {curr_perm_set_name} in target mapping as it is provisioned in management account")
+                    continue
+
                 assigned_accounts_list = sorted(list(assigned_accounts))
                 covered_accounts = set()
                 non_management_active_accounts = []
@@ -392,43 +420,39 @@ def get_account_assignments():
                 logger.info(
                     f"Collecting accounts for {display_name}: {curr_perm_set_name}")
                 covered_accounts = set()  # Reset for this permission set
-                mgmt_account_id = None
-
                 try:
-                    mgmt_account_id = organizations.describe_organization()[
-                        'Organization']['MasterAccountId']
-                    if mgmt_account_id in active_account_ids:
-                        covered_accounts.add(mgmt_account_id)
+                    if MANAGEMENT_ACCOUNT_ID in active_account_ids:
+                        covered_accounts.add(MANAGEMENT_ACCOUNT_ID)
                         mgmt_acc = organizations.describe_account(
-                            AccountId=mgmt_account_id)['Account']
+                            AccountId=MANAGEMENT_ACCOUNT_ID)['Account']
                         account_names.add(mgmt_acc['Name'])
                         logger.debug(
-                            f"Added management account {mgmt_account_id} to covered accounts")
+                            f"Added management account {MANAGEMENT_ACCOUNT_ID} to covered accounts")
                 except Exception as e:
                     logger.error(f"Error getting management account: {str(e)}")
 
-                if is_delegated_admin:
+                if IS_DELEGATED:
                     logger.info(
                         f"Delegated admin detected. \
-                            Any permission set assigned with all accounts including and except management account will be considered global. \
+                            Permission set assigned with all accounts except management account will be considered global as management account permission sets MUST be created and provisioned from the management account. \
                                 Checking if {curr_perm_set_name} is global...")
                     # add all accounts to global if running in delegated admin and assigned to all accounts or all accounts except management account.
-                    all_accounts_assigned = all(
-                        acc_id in assigned_accounts for acc_id in active_account_ids)
+                    # all_accounts_assigned = all(
+                    #     acc_id in assigned_accounts for acc_id in active_account_ids)
 
                     non_management_active_accounts = [
-                        acc for acc in active_account_ids if acc != management_account_id]
+                        acc for acc in active_account_ids if acc != MANAGEMENT_ACCOUNT_ID]
                     all_non_management_assigned = sorted(
                         assigned_accounts_list) == sorted(non_management_active_accounts)
 
-                    if all_accounts_assigned or all_non_management_assigned:
+                    if all_non_management_assigned:
                         global_perm_sets.append(curr_perm_set_name)
                     elif target_list:
                         target_perm_sets[curr_perm_set_name] = target_list
                 else:
                     logger.info(
                         f"Delegated admin not detected. Identity Center running in Management account \
-                            Any permission set assigned with all accounts including the management account will be considered global. \
+                            Permission set assigned with all accounts including the management account will be considered global. \
                                 Checking if {curr_perm_set_name} is global...")
                     # For non-delegated admin, only add to global if assigned to all accounts
                     if all(acc_id in assigned_accounts for acc_id in active_account_ids):
@@ -475,6 +499,9 @@ def write_json_file(data, filepath):
 
 def main():
     try:
+        # Initialize global variables for delegated admin status and management account ID
+        initialize_global_vars()
+
         base_dir = "identity-center-mapping-info"
         perm_sets_dir = os.path.join(base_dir, "permission-sets")
         create_directory_if_not_exists(perm_sets_dir)
@@ -496,15 +523,17 @@ def main():
             all_perm_sets.extend(perm_sets_response['PermissionSets'])
             sleep(0.1)
 
-        for perm_set_arn in all_perm_sets:
-            perm_set_json = get_permission_set_details(perm_set_arn)
-            perm_set_file = os.path.join(
-                perm_sets_dir, f"{perm_set_json['Name']}.json")
-            write_json_file(perm_set_json, perm_set_file)
-            logger.info(f"Created permission set file: {perm_set_file}")
-
-        # get assignments and create mapping files
+        # Get assignments
         global_mapping, target_mapping = get_account_assignments()
+
+        # Create permission set files, skipping those provisioned in management account
+        for perm_set_arn in all_perm_sets:
+            if not (IS_DELEGATED and perm_set_arn in skip_management_perm_sets):
+                perm_set_json = get_permission_set_details(perm_set_arn)
+                perm_set_file = os.path.join(
+                    perm_sets_dir, f"{perm_set_json['Name']}.json")
+                write_json_file(perm_set_json, perm_set_file)
+                logger.info(f"Created permission set file: {perm_set_file}")
 
         global_mapping_file = os.path.join(base_dir, "global-mapping.json")
         write_json_file(global_mapping, global_mapping_file)
