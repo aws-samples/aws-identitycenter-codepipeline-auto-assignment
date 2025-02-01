@@ -523,8 +523,7 @@ def main():
             all_perm_sets.extend(perm_sets_response['PermissionSets'])
             sleep(0.1)
 
-        # Get assignments first to identify management account permission sets
-        # This will populate skip_management_perm_sets for permission sets provisioned in management account
+        # Get assignments
         global_mapping, target_mapping = get_account_assignments()
 
         # Create permission set files, skipping those provisioned in management account
