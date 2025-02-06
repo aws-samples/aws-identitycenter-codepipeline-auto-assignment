@@ -13,6 +13,7 @@
         "createICKMSAdminRole": "true",
         "ICKMSAdminArn": "",
         "createS3KmsKey": "true",
-        "S3KmsArn": ""
+        "S3KmsArn": "",
+        "BuildTimeout": 120
     }
 }
