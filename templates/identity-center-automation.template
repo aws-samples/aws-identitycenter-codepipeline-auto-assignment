@@ -27,7 +27,7 @@ Parameters:
       The S3 bucket that stores the source artifacts. We are not using artifacts for this build but need to have permissions to allow Codepipeline to execute the build.
     Type: String
   AutomationBuildProjectName:
-    Description: 'The full name of the automation CodeBuild Project'
+    Description: "The full name of the automation CodeBuild Project"
     Type: String
     Default: ic-automation-build-project
   AssignmentAutomationZipFileName:
@@ -81,12 +81,22 @@ Parameters:
       - "false"
     Default: "false"
     Description: Parameter to check if Control Tower is deployed
+  BuildTimeout:
+    Type: Number
+    Default: 120
+    MinValue: 5
+    MaxValue: 2160
+    Description: The timeout in minutes for the build process between 5-2160 minutes (Up to 36 hours)
+
 Conditions:
   AdminDelegatedEqualsTrue: !Equals [!Ref AdminDelegated, "true"]
-  IsICAutomationAdminArnEmpty: !Equals [ !Ref ICAutomationAdminArn, ""]
+  IsICAutomationAdminArnEmpty: !Equals [!Ref ICAutomationAdminArn, ""]
   ControlTowerEnabledEqualsTrue: !Equals [!Ref ControlTowerEnabled, "true"]
   CTorAdminDelegated:
-      !Or [Condition: ControlTowerEnabledEqualsTrue, Condition: AdminDelegatedEqualsTrue]
+    !Or [
+      Condition: ControlTowerEnabledEqualsTrue,
+      Condition: AdminDelegatedEqualsTrue,
+    ]
 
 Resources:
   #######################################################################
@@ -112,7 +122,7 @@ Resources:
   # Codebuild Project that manages IC permission sets and assignments #
   #####################################################################
   ICAutomationBuildProject:
-    Type: 'AWS::CodeBuild::Project'
+    Type: "AWS::CodeBuild::Project"
     Properties:
       Name: !Ref AutomationBuildProjectName
       Description: >-
@@ -124,12 +134,12 @@ Resources:
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
-        Image: 'aws/codebuild/standard:7.0'
+        Image: "aws/codebuild/standard:7.0"
         EnvironmentVariables:
           - Name: S3_BUCKET_NAME
             Type: PLAINTEXT
             Value: !Join
-              - '-'
+              - "-"
               - - !Ref ICMappingBucketName
                 - !Sub ${AWS::AccountId}
                 - !Sub ${AWS::Region}
@@ -227,7 +237,7 @@ Resources:
                   fi
                 - 'echo "Exiting build with final exit code: $EXIT_CODE"'
                 - exit $EXIT_CODE
-      TimeoutInMinutes: 120
+      TimeoutInMinutes: !Ref BuildTimeout
   ICPermissionSetAssignmentAutomationRole:
     Type: "AWS::IAM::Role"
     Properties:
@@ -423,24 +433,24 @@ Resources:
     Properties:
       LogGroupName: !Sub ic-auto-assignment-enabler-${AWS::AccountId}-${AWS::Region}
       RetentionInDays: 30
-    
+
   #####################################################################################################
   # AWS Event Bus Policy - To receive Organization event from Management account when Admin delegated #
   #####################################################################################################
-  OrgEventsEventBus: 
+  OrgEventsEventBus:
     Condition: AdminDelegatedEqualsTrue
     Type: AWS::Events::EventBus
-    Properties: 
-        Name: !Sub ManagementAccountOrgEvents-${AWS::AccountId}
-        Policy: 
-          Version: "2012-10-17"
-          Statement:
-            - Sid: AllowReceivingManagementAccountOrgEvents
-              Effect: "Allow"
-              Principal: 
-                AWS: !Sub "arn:aws:iam::${OrgManagementAccount}:root"
-              Action: "events:PutEvents"
-              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/ManagementAccountOrgEvents-${AWS::AccountId}"
+    Properties:
+      Name: !Sub ManagementAccountOrgEvents-${AWS::AccountId}
+      Policy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowReceivingManagementAccountOrgEvents
+            Effect: "Allow"
+            Principal:
+              AWS: !Sub "arn:aws:iam::${OrgManagementAccount}:root"
+            Action: "events:PutEvents"
+            Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/ManagementAccountOrgEvents-${AWS::AccountId}"
 
   ################################################################
   # AWS Event Rules - Trigger Automation by invited account #
@@ -464,7 +474,7 @@ Resources:
               state:
                 - "ACCEPTED"
       Name: TriggerICAutomationJoinedInvitedAccountEnablerRule
-      EventBusName: !If 
+      EventBusName: !If
         - AdminDelegatedEqualsTrue
         - !Ref OrgEventsEventBus
         - !Ref "AWS::NoValue"
@@ -539,7 +549,7 @@ Resources:
               state:
                 - SUCCEEDED
       Name: TriggerICAutomationCreateNewAccountEnablerRule
-      EventBusName: !If 
+      EventBusName: !If
         - AdminDelegatedEqualsTrue
         - !Ref OrgEventsEventBus
         - !Ref "AWS::NoValue"
@@ -595,7 +605,7 @@ Resources:
           eventName:
             - MoveAccount
       Name: TriggerICAutomationMoveAccountEnablerRule
-      EventBusName: !If 
+      EventBusName: !If
         - AdminDelegatedEqualsTrue
         - !Ref OrgEventsEventBus
         - !Ref "AWS::NoValue"
@@ -635,7 +645,7 @@ Resources:
               event_name: "$.detail.eventName"
               event_source: "$.source"
               account_id: "$.detail.requestParameters.accountId"
-    
+
   ##########################################################
   # AWS Event Rules - Trigger Automation by new account creation success #
   ##########################################################
@@ -654,9 +664,9 @@ Resources:
           responseElements:
             organizationalUnit:
               id:
-                - {"prefix": "ou"}
+                - { "prefix": "ou" }
       Name: TriggerICAutomationCreateNewOUEnablerRule
-      EventBusName: !If 
+      EventBusName: !If
         - AdminDelegatedEqualsTrue
         - !Ref OrgEventsEventBus
         - !Ref "AWS::NoValue"
@@ -701,7 +711,6 @@ Resources:
               event_source: "$.source"
               ou_id: "$.detail.responseElements.organizationalUnit.id"
               ou_name: "$.detail.responseElements.organizationalUnit.name"
-
 
   ###########################################################################################################
   # AWS Event Rules - Detect manual user interaction with the IAM Identity Center - comment line 258-366 to disable#
@@ -889,7 +898,7 @@ Resources:
               event_name: "$.detail.eventName"
               event_source: "$.source"
               user_identity: "$.detail.userIdentity.arn"
-        
+
   AutoICEventBridgeRole:
     Type: AWS::IAM::Role
     Properties:

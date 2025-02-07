@@ -20,7 +20,7 @@ phases:
       - echo "Create CloudFormation Parameter Files."
       - jq --arg artifact_bucket "$ARTIFACT_S3_BUCKET_NAME" '.Parameters.ArtifactBucketName = $artifact_bucket' identity-center-stacks-parameters.json > ic-automation-parameters.json
       - jq "del(.Parameters.OrganizationId, .Parameters.ICKMSAdminArn, .Parameters.createICKMSAdminRole, .Parameters.createICAdminRole, .Parameters.createS3KmsKey, .Parameters.S3KmsArn)" ic-automation-parameters.json > temp.json && mv temp.json ic-automation-parameters.json
-      - jq "del(.Parameters.IdentityStoreId, .Parameters.SNSEmailEndpointSubscription, .Parameters.ICInstanceARN, .Parameters.OrgManagementAccount, .Parameters.AdminDelegated, .Parameters.ControlTowerEnabled)" identity-center-stacks-parameters.json > ic-s3-parameters.json
+      - jq "del(.Parameters.IdentityStoreId, .Parameters.SNSEmailEndpointSubscription, .Parameters.ICInstanceARN, .Parameters.OrgManagementAccount, .Parameters.AdminDelegated, .Parameters.ControlTowerEnabled, .Parameters.BuildTimeout)" identity-center-stacks-parameters.json > ic-s3-parameters.json
       - cat ic-automation-parameters.json
       - cat ic-s3-parameters.json
       - echo "Parameter Process is done."
