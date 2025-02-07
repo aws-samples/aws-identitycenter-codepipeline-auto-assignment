@@ -14,6 +14,6 @@
         "ICKMSAdminArn": "",
         "createS3KmsKey": "true",
         "S3KmsArn": "",
-        "BuildTimeout": 120
+        "BuildTimeout": "120"
     }
 }
