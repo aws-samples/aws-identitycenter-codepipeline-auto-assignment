@@ -13,12 +13,25 @@ import watchtower
 from botocore.config import Config
 import boto3
 from botocore.exceptions import ClientError
+# from profilehooks import profile
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import random
+from functools import lru_cache
+import time
+# from threading import Lock
+from weakref import WeakValueDictionary
+# from threading import RLock
+
+PERMISSION_WORKERS = 10  # For create/delete operations
+GENERAL_WORKERS = 10     # For read/list operations
+RETRY_BASE_DELAY = 1     # Base delay for exponential backoff
 
 AWS_CONFIG = Config(
     retries=dict(
         max_attempts=100,
         mode='adaptive'
-    )
+    ),
+    max_pool_connections=PERMISSION_WORKERS + GENERAL_WORKERS
 )
 
 runtime_region = os.getenv('AWS_REGION')
@@ -49,6 +62,7 @@ else:
 build_initiator = os.getenv("CODEBUILD_INITIATOR")
 pipeline_execution_id = os.getenv('CODEPIPELINE_EXECUTION_ID')
 commit_id = os.getenv('COMMIT_ID')
+
 skipped_perm_set = {}
 
 logger = logging.getLogger()
@@ -97,6 +111,198 @@ def log_and_append_error(message):
 logger.info("Logging initialized")
 
 
+# class LockManager:
+#     def __init__(self):
+#         self.locks = WeakValueDictionary()
+#         self._lock = Lock()
+
+#     def get_lock(self, key):
+#         with self._lock:
+#             if key not in self.locks:
+#                 self.locks[key] = Lock()
+#             return self.locks[key]
+
+
+# lock_manager = LockManager()
+
+CACHE_TTL = 1800  # 30 minutes
+
+
+class CacheManager:
+    def __init__(self):
+        self._cache = {}
+        self._timestamps = {}
+
+    def get(self, key):
+        if key in self._cache and time.time() - self._timestamps.get(key, 0) < CACHE_TTL:
+            return self._cache[key]
+        return None
+
+    def set(self, key, value):
+        self._cache[key] = value
+        self._timestamps[key] = time.time()
+
+
+cache = CacheManager()
+
+
+def is_retryable_error(error):
+    if isinstance(error, ClientError):
+        code = error.response['Error']['Code']
+        return code in ['ThrottlingException', 'RequestLimitExceeded']
+    return False
+
+
+def execute_with_retry(func, *args, **kwargs):
+    """Enhanced retry helper with custom configurations"""
+
+    retry_kwargs = {
+        'max_attempts': kwargs.pop('max_attempts', 5),
+        'extra_retry_codes': kwargs.pop('extra_retry_codes', []) + ['ThrottlingException', 'ConflictException'],
+        'min_delay': kwargs.pop('min_delay', 1)
+    }
+
+    max_attempts = retry_kwargs['max_attempts']
+    extra_retry_codes = retry_kwargs['extra_retry_codes']
+    min_delay = retry_kwargs['min_delay']
+    # max_attempts = kwargs.pop('max_attempts', 5)
+    # extra_retry_codes = kwargs.pop('extra_retry_codes', [])
+    # extra_retry_codes += ['ThrottlingException', 'ConflictException']
+    # min_delay = kwargs.pop('min_delay', 1)
+
+    for attempt in range(max_attempts):
+        try:
+            return func(*args, **kwargs)
+        except (ClientError, ic_admin.exceptions.ConflictException) as error:
+            error_code = error.response['Error']['Code']
+            if attempt == max_attempts - 1 or error_code not in ['ConflictException'] + extra_retry_codes:
+                raise
+
+            base_delay = RETRY_BASE_DELAY * (2 ** attempt)
+            sleep_time = max(min_delay, base_delay) + random.uniform(0, 1)
+
+            logger.warning(
+                f"Retrying {func.__name__} in {sleep_time:.2f}s (attempt {attempt + 1})")
+            sleep(sleep_time)
+        except Exception as error:
+            log_and_append_error(
+                f"Unexpected error in {func.__name__}: {str(error)}")
+            raise
+
+
+def process_permission_set(local_perm_set, aws_permission_sets):
+    """Process a single permission set in parallel"""
+    local_errors = []
+    perm_set_name = local_perm_set['Name']
+    local_description = local_perm_set.get('Description', '')
+    local_tags = local_perm_set.get('Tags', [])
+    local_session_duration = local_perm_set.get('Session_Duration', 'PT1H')
+
+    # Check if this permission set should be skipped
+    global skipped_perm_set
+    if any(name == perm_set_name for arn, name in skipped_perm_set.items()):
+        # skip and continue to next permission set
+        return []
+
+    try:
+        # Check if permission set exists
+        if perm_set_name in aws_permission_sets:
+            logger.info(f"Permission set {perm_set_name} exists. Syncing.")
+            perm_set_arn = aws_permission_sets[perm_set_name]['Arn']
+            aws_session_duration = aws_permission_sets[perm_set_name]['SessionDuration']
+            aws_description = aws_permission_sets[perm_set_name]['Description']
+        else:
+            # Create new permission set
+            logger.info(
+                f"Permission Set doesn't exist. Creating new permission set: {perm_set_name}")
+            response = execute_with_retry(
+                ic_admin.create_permission_set,
+                Name=perm_set_name,
+                Description=local_description,
+                InstanceArn=ic_instance_arn,
+                Tags=local_tags,
+                SessionDuration=local_session_duration
+            )
+            perm_set_arn = response['PermissionSet']['PermissionSetArn']
+            aws_session_duration = response['PermissionSet']['SessionDuration']
+            aws_description = response['PermissionSet']['Description']
+
+    except Exception as e:
+        if is_retryable_error(e):
+            raise
+        local_errors.append(f"{perm_set_name} processing failed: {str(e)}")
+
+    # Sync permission set components
+    components = [
+        ('ManagedPolicies', sync_managed_policies),
+        ('CustomerPolicies', sync_customer_policies),
+        ('InlinePolicies', sync_inline_policies),
+        ('PermissionsBoundary', sync_permissions_boundary),
+        ('Tags', sync_tags)
+    ]
+    for key, func in components:
+        if key in local_perm_set:
+            try:
+                execute_with_retry(func, perm_set_name,
+                                   local_perm_set[key], perm_set_arn)
+            except Exception as e:
+                local_errors.append(
+                    f"{perm_set_name} {key} sync failed: {str(e)}")
+    # Sync permission set attributes
+    try:
+        sync_description(perm_set_name, perm_set_arn,
+                         local_description, aws_description)
+    except Exception as e:
+        log_and_append_error(
+            f"{perm_set_name} description sync failed: {str(e)}")
+    try:
+        sync_session_duration(perm_set_name,
+                              perm_set_arn, aws_session_duration, local_session_duration)
+    except Exception as e:
+        log_and_append_error(
+            f"{perm_set_name} session duration sync failed: {str(e)}")
+
+    # Reprovision if needed
+    if not local_errors:
+        execute_with_retry(reprovision_permission_sets,
+                           perm_set_name, perm_set_arn)
+
+    return local_errors
+
+
+def delete_obsolete_permission_sets(local_files, aws_permission_sets):
+    """Delete permission sets that exist in AWS but not in the local configuration"""
+    all_errors = []
+
+    # Get the list of local permission set names
+    local_perm_set_names = {ps['Name'] for ps in local_files.values()}
+
+    # Find permission sets to delete
+    to_delete = [
+        (name, aws_permission_sets[name]['Arn'])
+        for name in aws_permission_sets
+        if name not in local_perm_set_names
+    ]
+
+    # Delete in parallel
+    with ThreadPoolExecutor(max_workers=PERMISSION_WORKERS) as executor:
+        futures = []
+        for name, arn in to_delete:
+            futures.append(executor.submit(
+                delete_permission_set,
+                arn,
+                name
+            ))
+
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                all_errors.append(f"Delete failed: {str(e)}")
+
+    return all_errors
+
+
 def sync_table_for_skipped_perm_sets(skipped_perm_set):
     """Sync DynamoDB table with the list of skipped permission sets if Admin is delegated"""
     logger.info("Starting sync of skipped permission sets with DynamoDB table")
@@ -106,7 +312,7 @@ def sync_table_for_skipped_perm_sets(skipped_perm_set):
         response = dynamodb.scan(
             TableName='ic-SkippedPermissionSetsTable')
         items = response['Items']
-        logger.info(f"Items in DynamoDB table: {items}")
+        logger.info(f"Items in DynamoDB table: {json.dumps(items, indent=2)}")
         for item in items:
             # If the permission set is not in the current skipped_perm_set, delete it from the table
             if item['perm_set_arn']['S'] not in skipped_perm_set:
@@ -148,164 +354,77 @@ def sync_table_for_skipped_perm_sets(skipped_perm_set):
         log_and_append_error(error_message)
 
 
-def get_all_permission_sets():
-    """List all the permission sets for the IAM Identity Center ARN"""
+def get_all_permission_sets(delegated_admin=False):
+    """Unified permission set fetcher with caching"""
+    cache_key = f"permsets_{delegated_admin}"
+    cached = cache.get(cache_key)
+    if cached:
+        logger.debug("Using cached permission sets")
+        return cached
+    permission_sets = {}
     try:
-        permission_set_name_and_arn = {}
-        response = ic_admin.list_permission_sets(
-            InstanceArn=ic_instance_arn,
-            MaxResults=100
-        )
-        all_perm_sets_arns = response['PermissionSets']
-        while 'NextToken' in response:
-            response = ic_admin.list_permission_sets(
-                InstanceArn=ic_instance_arn,
-                NextToken=response['NextToken'],
-                MaxResults=100
-            )
-            all_perm_sets_arns += response['PermissionSets']
-        global skipped_perm_set
-        skipped_perm_set.clear()
-        for perm_set_arn in all_perm_sets_arns:
-            describe_perm_set = ic_admin.describe_permission_set(
-                InstanceArn=ic_instance_arn,
-                PermissionSetArn=perm_set_arn
-            )
-            description = ''
-            try:
-                description = describe_perm_set['PermissionSet'].get(
-                    'Description', '-')
-            except Exception as error:
-                error_message = f'Failed to get description for permission set {perm_set_arn}. Error: {error}'
-                logger.warning(error_message)
-                description = 'Error retrieving description'
-            perm_set_name = describe_perm_set['PermissionSet']['Name']
-            perm_set_arn = describe_perm_set['PermissionSet']['PermissionSetArn']
-            list_tags = ic_admin.list_tags_for_resource(
-                InstanceArn=ic_instance_arn,
-                ResourceArn=perm_set_arn
-            )
-            tags = list_tags['Tags']
-            while 'NextToken' in list_tags:
-                list_tags = ic_admin.list_tags_for_resource(
+        paginator = ic_admin.get_paginator('list_permission_sets')
+        for page in paginator.paginate(InstanceArn=ic_instance_arn):
+            for arn in page['PermissionSets']:
+                desc = ic_admin.describe_permission_set(
                     InstanceArn=ic_instance_arn,
-                    ResourceArn=perm_set_arn,
-                    NextToken=list_tags['NextToken']
-                )
-                tags += list_tags['Tags']
-            control_tower_managed = False
-            for tag in tags:
-                if tag['Key'] == 'managedBy' and tag['Value'] == 'ControlTower':
-                    control_tower_managed = True
-                    break
-            if control_tower_managed == True:
-                skipped_perm_set.update({perm_set_arn: perm_set_name})
-                continue  # Ignore permission set if managed by Control Tower. Requires users to tag Control Tower managed permission sets before running the pipeline
-            permission_set_name_and_arn[perm_set_name] = {
-                'Arn': perm_set_arn,
-                'Description': description
-            }
+                    PermissionSetArn=arn
+                )['PermissionSet']
 
-    except ic_admin.exceptions.ConflictException as error:
-        logger.warning(
-            "The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...%s", error)
-        sleep(0.5)
-    except ClientError as error:
-        error_message = f'Client error occurred: {error}'
-        log_and_append_error(error_message)
-    except Exception as error:
-        error_message = f'Error occurred: {error}'
-        log_and_append_error(error_message)
-    if skipped_perm_set:
-        try:
-            logger.info(
-                f"Skipped Permission Set Name and ARN: {skipped_perm_set}")
-            sync_table_for_skipped_perm_sets(skipped_perm_set)
-        except Exception as error:
-            error_message = f'Failed to invoke sync_table_for_skipped_perm_sets: {error}'
-            log_and_append_error(error_message)
-    else:
-        logger.info("No Permission Sets were skipped")
-    return permission_set_name_and_arn
+                if delegated_admin and management_account_id in get_provisioned_accounts(arn):
+                    log_skipped_once(desc['Name'], arn, "management account")
+                    continue
+
+                if is_control_tower_managed(arn):
+                    log_skipped_once(desc['Name'], arn, "Control Tower")
+                    continue
+
+                permission_sets[desc['Name']] = {
+                    'Arn': arn, 'Description': desc.get('Description', ''), 'SessionDuration': desc.get('SessionDuration', 'PT1H')}
+
+        cache.set(cache_key, permission_sets)
+        return permission_sets
+    except Exception as e:
+        errors.append(f"Failed to list permission sets: {str(e)}")
 
 
-def get_all_permission_sets_if_delegate():
-    """List all the permission sets for the IAM Identity Center ARN"""
-    try:
-        permission_set_name_and_arn = {}
-        response = ic_admin.list_permission_sets(
-            InstanceArn=ic_instance_arn,
-            MaxResults=100
-        )
-        all_perm_sets_arns = response['PermissionSets']
-        while 'NextToken' in response:
-            response = ic_admin.list_permission_sets(
-                InstanceArn=ic_instance_arn,
-                NextToken=response['NextToken'],
-                MaxResults=100
-            )
-            all_perm_sets_arns += response['PermissionSets']
+def log_skipped_once(name, arn, reason):
+    """Warn once per permission set"""
+    global skipped_perm_set
+    if name not in skipped_perm_set:
+        logger.warning(f"Skipping {name} (managed by {reason})")
+        skipped_perm_set.update({arn: name})
 
-        global skipped_perm_set
-        skipped_perm_set.clear()
-        for perm_set_arn in all_perm_sets_arns:
-            describe_perm_set = ic_admin.describe_permission_set(
-                InstanceArn=ic_instance_arn,
-                PermissionSetArn=perm_set_arn
-            )
-            description = ''
-            try:
-                description = describe_perm_set['PermissionSet']['Description']
-            except Exception as error:
-                error_message = f'Failed to get description for permission set {perm_set_arn}. Error: {error}'
-                logger.warning(error_message)
-            perm_set_name = describe_perm_set['PermissionSet']['Name']
-            perm_set_arn = describe_perm_set['PermissionSet']['PermissionSetArn']
-            list_accounts_for_provisioned_perm_set = ic_admin.list_accounts_for_provisioned_permission_set(
-                InstanceArn=ic_instance_arn,
-                PermissionSetArn=perm_set_arn,
-                MaxResults=100,
-            )
-            accounts_for_perm_set = list_accounts_for_provisioned_perm_set['AccountIds']
-            while 'NextToken' in list_accounts_for_provisioned_perm_set:
-                list_accounts_for_provisioned_perm_set = ic_admin.list_accounts_for_provisioned_permission_set(
-                    InstanceArn=ic_instance_arn,
-                    PermissionSetArn=perm_set_arn,
-                    MaxResults=100,
-                    NextToken=list_accounts_for_provisioned_perm_set['NextToken']
-                )
-                accounts_for_perm_set += list_accounts_for_provisioned_perm_set['AccountIds']
-            logger.info("Accounts for permission set %s is %s",
-                        perm_set_arn, accounts_for_perm_set)
-            if management_account_id in accounts_for_perm_set:
-                skipped_perm_set.update({perm_set_arn: perm_set_name})
-                continue
-            permission_set_name_and_arn[perm_set_name] = {
-                'Arn': perm_set_arn,
-                'Description': description
-            }
 
-    except ic_admin.exceptions.ConflictException as error:
-        logger.warning(
-            "The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...%s", error)
-        sleep(0.5)
-    except ClientError as error:
-        error_message = f'Client error occurred: {error}'
-        log_and_append_error(error_message)
-    except Exception as error:
-        error_message = f'Error occurred: {error}'
-        log_and_append_error(error_message)
-    if skipped_perm_set:
-        try:
-            logger.info(
-                f"Skipped Permission Set Name and ARN: {skipped_perm_set}")
-            sync_table_for_skipped_perm_sets(skipped_perm_set)
-        except Exception as error:
-            error_message = f'Failed to invoke sync_table_for_skipped_perm_sets: {error}'
-            log_and_append_error(error_message)
-    else:
-        logger.info("No Permission Sets were skipped")
-    return permission_set_name_and_arn
+def get_provisioned_accounts(perm_set_arn):
+    """Get accounts for permission set with caching"""
+    cache_key = f"provisioned_{perm_set_arn}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    accounts = []
+    paginator = ic_admin.get_paginator(
+        'list_accounts_for_provisioned_permission_set')
+    for page in paginator.paginate(
+        InstanceArn=ic_instance_arn,
+        PermissionSetArn=perm_set_arn
+    ):
+        accounts.extend(page['AccountIds'])
+
+    cache.set(cache_key, accounts)
+    return accounts
+
+
+@lru_cache(maxsize=128)
+def is_control_tower_managed(perm_set_arn):
+    """Check Control Tower tag"""
+    tags = execute_with_retry(
+        ic_admin.list_tags_for_resource,
+        InstanceArn=ic_instance_arn,
+        ResourceArn=perm_set_arn
+    )['Tags']
+    return any(t['Key'] == 'managedBy' and t['Value'] == 'ControlTower' for t in tags)
 
 
 def get_all_json_files(bucket_name):
@@ -358,6 +477,7 @@ def create_permission_set(name, desc, tags, session_duration):
     except Exception as error:
         error_message = f'Error occurred: {error}'
         log_and_append_error(error_message)
+    cache.set(f"permsets_{delegated}", None)
     return response
 
 
@@ -620,21 +740,42 @@ def sync_inline_policies(local_name, local_inline_policy, perm_set_arn):
 def delete_permission_set(perm_set_arn, perm_set_name):
     """Delete IAM Identity Center permission sets"""
     logger.info(f"Deleting permission set: {perm_set_name} ({perm_set_arn})")
+
+    # Check if permission set is managed by Control Tower
+    if is_control_tower_managed(perm_set_arn):
+        logger.warning(
+            f"Cannot delete Control Tower managed permission set: {perm_set_name}")
+        return
+
+    # Check if permission set is in use
+    accounts = get_provisioned_accounts(perm_set_arn)
+    if accounts:
+        logger.info(
+            f"Deprovisioning {perm_set_name} from {len(accounts)} accounts")
+        deprovision_permission_set(perm_set_arn, perm_set_name)
+
+    # Verify deprovisioning completed
+    remaining_accounts = get_provisioned_accounts(perm_set_arn)
+    if remaining_accounts:
+        raise Exception(
+            f"Failed to deprovision {perm_set_name} from accounts: {remaining_accounts}")
+
     try:
         ic_admin.delete_permission_set(
             InstanceArn=ic_instance_arn,
-            PermissionSetArn=perm_set_arn
-        )
+            PermissionSetArn=perm_set_arn)
         logger.info('%s Permission set deleted', perm_set_name)
+        cache.set(f"permsets_{delegated}", None)  # Invalidate cache
     except ic_admin.exceptions.ConflictException as error:
-        logger.warning(
-            "%sThe same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
-    except ClientError as error:
-        error_message = f'Client error occurred: {error}'
+        logger.warning(f"Conflict during deletion of {perm_set_name}: {error}")
 
-        log_and_append_error(error_message)
+    except ClientError as error:
+        if error.response['Error']['Code'] == 'ResourceNotFoundException':
+            logger.info(f"Permission set {perm_set_name} already deleted")
+            return
+
     except Exception as error:
-        error_message = f'Error occurred: {error}'
+        error_message = f'Unexpected error occurred while deleting {perm_set_name}: {error}'
         log_and_append_error(error_message)
 
 
@@ -742,7 +883,7 @@ def sync_permissions_boundary(local_name, local_boundary, perm_set_arn):
         log_and_append_error(error_message)
 
 
-def sync_description(local_name, perm_set_arn, local_desc, aws_desc, session_duration):
+def sync_description(local_name, perm_set_arn, local_desc, aws_desc):
     """Synchronize the description between the JSON file and AWS service"""
     logger.info(
         f'Syncing description for Permission Set: {local_name} - {perm_set_arn}')
@@ -753,8 +894,28 @@ def sync_description(local_name, perm_set_arn, local_desc, aws_desc, session_dur
             ic_admin.update_permission_set(
                 InstanceArn=ic_instance_arn,
                 PermissionSetArn=perm_set_arn,
-                SessionDuration=session_duration,
                 Description=local_desc
+            )
+        except ClientError as error:
+            logger.warning("%s", error)
+        except Exception as error:
+            error_message = f'Error occurred: {error}'
+            log_and_append_error(error_message)
+
+
+def sync_session_duration(local_name, perm_set_arn, aws_session_duration, session_duration):
+    """Synchronize the session duration between the JSON file and AWS service"""
+    logger.info(
+        f'Syncing Session duration for Permission Set: {local_name} - {perm_set_arn}')
+
+    if not session_duration == aws_session_duration:
+        try:
+            logger.info('Updating session duration for %s - %s',
+                        local_name, perm_set_arn)
+            ic_admin.update_permission_set(
+                InstanceArn=ic_instance_arn,
+                PermissionSetArn=perm_set_arn,
+                SessionDuration=session_duration
             )
         except ClientError as error:
             logger.warning("%s", error)
@@ -802,6 +963,12 @@ def remove_tag(key, perm_set_arn, local_name):
 
 def sync_tags(local_name, local_tags, perm_set_arn):
     """Synchronize the tags between the JSON and AWS"""
+    cache_key = f"tags_{perm_set_arn}"
+    cached_tags = cache.get(cache_key)
+
+    if cached_tags and cached_tags == local_tags:
+        logger.debug(f"Skipping tag sync for {local_name} - no changes")
+        return
     logger.info(
         f'Syncing tags for Permission Set: {local_name} - {perm_set_arn}')
     try:
@@ -838,6 +1005,7 @@ def sync_tags(local_name, local_tags, perm_set_arn):
     except Exception as error:
         error_message = f'Error occurred: {error}'
         log_and_append_error(error_message)
+    cache.set(cache_key, local_tags)
 
 
 def get_active_accounts_map():
@@ -847,11 +1015,13 @@ def get_active_accounts_map():
         paginator = orgs_client.get_paginator('list_accounts')
         for page in paginator.paginate():
             for account in page['Accounts']:
-                account_status_map[account['Id']] = account['Status'] == 'ACTIVE'
+                account_status_map[account['Id']
+                                   ] = account['Status'] == 'ACTIVE'
         return account_status_map
     except Exception as error:
         logger.warning(f"Error fetching account statuses: {error}")
         return {}
+
 
 def is_account_active(account_id, account_status_map=None):
     """Check if the AWS account is active (not suspended or pending closure)"""
@@ -862,144 +1032,218 @@ def is_account_active(account_id, account_status_map=None):
             status = response['Account']['Status']
             return status == 'ACTIVE'
         except Exception as error:
-            logger.warning(f"Error checking account status for {account_id}: {error}")
+            logger.warning(
+                f"Error checking account status for {account_id}: {error}")
             return False
-    
+
     return account_status_map.get(account_id, False)
 
 
-def get_accounts_by_perm_set(perm_set_arn):
-    """List all the active accounts for a given permission set"""
-    try:
-        response = ic_admin.list_accounts_for_provisioned_permission_set(
-            InstanceArn=ic_instance_arn,
-            PermissionSetArn=perm_set_arn
-        )
-        acct_list = response['AccountIds']
-        while 'NextToken' in response:
-            response = ic_admin.list_accounts_for_provisioned_permission_set(
-                NextToken=response['NextToken'],
-                InstanceArn=ic_instance_arn,
-                PermissionSetArn=perm_set_arn
-            )
-            acct_list += response['AccountIds']
+def deprovision_permission_set(perm_set_arn, perm_set_name):
+    """Deprovision permission sets with batch processing and dynamic retries"""
+    logger.info(f'Deprovisioning {perm_set_name}')
+    account_ids = get_provisioned_accounts(perm_set_arn)
 
-        # Get account statuses once for all accounts
-        account_status_map = get_active_accounts_map()
-        
-        # Filter out suspended or closed accounts using the cached map
-        active_acct_list = [
-            acct for acct in acct_list if is_account_active(acct, account_status_map)]
-        logger.debug(f"All accounts: {acct_list}")
-        logger.debug(f"Active accounts: {active_acct_list}")
-        return active_acct_list
+    if not account_ids:
+        logger.info(f"No accounts found for {perm_set_name}")
+        return
 
-    except ClientError as error:
-        error_message = f'Client error occurred: {error}'
-        log_and_append_error(error_message)
-    except Exception as error:
-        error_message = f'Error occurred: {error}'
-        log_and_append_error(error_message)
-    return []
+    # Calculate batch size and max attempts dynamically
+    batch_size = calculate_batch_size(len(account_ids))
+    max_attempts = dynamic_max_attempts(len(account_ids))
+
+    # Process accounts in batches
+    batches = [account_ids[i:i + batch_size]
+               for i in range(0, len(account_ids), batch_size)]
+    failed_accounts = []
+
+    for batch in batches:
+        with ThreadPoolExecutor(max_workers=PERMISSION_WORKERS) as executor:
+            # Create future-account mapping
+            future_to_account = {
+                executor.submit(deprovision_account, perm_set_name, perm_set_arn, account, max_attempts): account
+                for account in batch
+            }
+
+            for future in as_completed(future_to_account):
+                account = future_to_account[future]
+                try:
+                    if (result := future.result()):
+                        failed_accounts.append(result)
+                except Exception as error:
+                    logger.error(f"Unexpected error for {account}: {error}")
+                    failed_accounts.append(account)
+
+    # Retry failed accounts with increased max attempts
+    if failed_accounts:
+        logger.info(
+            f"Retrying failed accounts for {perm_set_name}: {failed_accounts}")
+        with ThreadPoolExecutor(max_workers=PERMISSION_WORKERS) as executor:
+            future_to_account = {
+                executor.submit(deprovision_account, perm_set_name, perm_set_arn, account, max_attempts + 5): account
+                for account in failed_accounts
+            }
+
+            for future in as_completed(future_to_account):
+                account = future_to_account[future]
+                try:
+                    if (result := future.result()):
+                        logger.error(f"Permanent failure for {account}")
+                except Exception as error:
+                    logger.error(f"Final error for {account}: {error}")
+
+    logger.info(f"Completed deprovisioning for {perm_set_name}")
 
 
-def deprovision_permission_set_from_accounts(perm_set_arn,
-                                             perm_set_name):
-    """
-    Once the permission set is deleted. Automation will also
-    remove any provisioned account assignments for this permission set.
-    """
-    try:
-        account_ids = get_accounts_by_perm_set(perm_set_arn)
-
-        # If the list of accounts is not null - remove all of the assignments
-        if account_ids:
-            for account in account_ids:
-                # Get all of the assignments of a permission set
-                response = ic_admin.list_account_assignments(
-                    InstanceArn=ic_instance_arn,
-                    AccountId=account,
-                    PermissionSetArn=perm_set_arn
-                )
-                acct_assignments = response['AccountAssignments']
-                while 'NextToken' in response:
-                    ic_admin.list_account_assignments(
-                        InstanceArn=ic_instance_arn,
-                        AccountId=account,
-                        PermissionSetArn=perm_set_arn,
-                        NextToken=response['NextToken']
-                    )
-                    acct_assignments += response['AccountAssignments']
-
-                # Remove all of the identified assignments for permission set
-                for assignment in acct_assignments:
-                    logger.info("Deleting assignment for account: %s, principal-type: %s, \
-                                 principal-id: %s", account, assignment['PrincipalType'], assignment['PrincipalId'])
-                    delete_assignment = ic_admin.delete_account_assignment(
-                        InstanceArn=ic_instance_arn,
-                        TargetId=account,
-                        TargetType='AWS_ACCOUNT',
-                        PermissionSetArn=perm_set_arn,
-                        PrincipalType=assignment['PrincipalType'],
-                        PrincipalId=assignment['PrincipalId']
-                    )
-                    if 'AccountAssignmentDeletionStatus' in delete_assignment and delete_assignment['AccountAssignmentDeletionStatus'].get('RequestId'):
-                        request_id = delete_assignment['AccountAssignmentDeletionStatus']['RequestId']
-                        complete = False
-                        while not complete:
-                            status_response = ic_admin.describe_account_assignment_deletion_status(
-                                InstanceArn=ic_instance_arn,
-                                AccountAssignmentDeletionRequestId=request_id
-                            )
-                            current_status = status_response['AccountAssignmentDeletionStatus']['Status']
-                            if current_status == 'IN_PROGRESS':
-                                logger.info('Delete assignment in progress...')
-                                sleep(1)
-                            elif current_status == 'SUCCEEDED':
-                                complete = True
-                                logger.info(
-                                    "Delete assignment completed successfully")
-                            elif current_status == 'FAILED':
-                                complete = True
-                                failure_reason = status_response['AccountAssignmentDeletionStatus'].get(
-                                    'FailureReason', 'Unknown')
-                                log_and_append_error(
-                                    f"Delete assignment failed for permission set {perm_set_name} for account {account}. Reason:{failure_reason}")
-                                raise Exception(
-                                    f"Failed to delete assignment: {failure_reason}")
-                    logger.debug("%s", delete_assignment)
-        else:
+def deprovision_account(perm_set_name, perm_set_arn, account, max_attempts=7):
+    """Handle deprovisioning for a single account"""
+    attempt = 0
+    while attempt < max_attempts:
+        try:
             logger.info(
-                '%s is not provisioned to any accounts - deleting...', perm_set_name)
+                f"Deprovisioning {perm_set_name} from {account} (attempt {attempt + 1})")
+            # Get all assignments for this account
+            acct_assignments = []
 
-    except ic_admin.exceptions.ConflictException as error:
-        logger.warning(
-            "%sThe same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
-        sleep(0.5)
-    except ClientError as error:
-        error_message = f'Client error occurred: {error}'
-        log_and_append_error(error_message)
-    except Exception as error:
-        error_message = f'Error occurred: {error}'
-        log_and_append_error(error_message)
+            paginator = ic_admin.get_paginator('list_account_assignments')
+            for page in paginator.paginate(
+                InstanceArn=ic_instance_arn,
+                AccountId=account,
+                PermissionSetArn=perm_set_arn
+            ):
+                acct_assignments.extend(page['AccountAssignments'])
+
+            # Delete all assignments
+            for assignment in acct_assignments:
+                logger.info(
+                    f"Deleting assignment for account {account}: {assignment}")
+                delete_response = execute_with_retry(
+                    ic_admin.delete_account_assignment,
+                    InstanceArn=ic_instance_arn,
+                    TargetId=account,
+                    TargetType='AWS_ACCOUNT',
+                    PermissionSetArn=perm_set_arn,
+                    PrincipalType=assignment['PrincipalType'],
+                    PrincipalId=assignment['PrincipalId'],
+                    extra_retry_codes=['ConflictException'],
+                    max_attempts=7
+                )
+
+                # Wait for deletion to complete
+                request_id = delete_response['AccountAssignmentDeletionStatus']['RequestId']
+                while True:
+                    status_response = ic_admin.describe_account_assignment_deletion_status(
+                        InstanceArn=ic_instance_arn,
+                        AccountAssignmentDeletionRequestId=request_id
+                    )
+                    status = status_response['AccountAssignmentDeletionStatus']['Status']
+
+                    if status == 'SUCCEEDED':
+                        logger.info(
+                            f"Successfully deprovisioned {perm_set_name} from {account}")
+                        return None
+                    elif status in ['FAILED', 'CANCELLED']:
+                        failure_reason = status_response['AccountAssignmentDeletionStatus'].get(
+                            'FailureReason', 'Unknown')
+                        raise Exception(
+                            f"Deprovisioning failed: {failure_reason}")
+                    sleep(0.5)
+
+        except Exception as error:
+            attempt += 1
+            if attempt >= max_attempts:
+                logger.error(
+                    f"Max deprovision retries exceeded for {account}: {str(error)}")
+                return account  # Return failed account for tracking
+
+            base_delay = RETRY_BASE_DELAY * (2 ** attempt)
+            sleep_time = min(base_delay + random.uniform(0, 1),
+                             30)  # Cap at 30 seconds
+            logger.warning(
+                f"Retrying deprovision for {account} in {sleep_time:.2f}s (attempt {attempt + 1})")
+            sleep(sleep_time)
+
+
+def provision_account(perm_set_name, perm_set_arn, account, max_attempts=7):
+    """Provision a permission set to a single account with dynamic retries"""
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            logger.info(
+                f"Provisioning {perm_set_name} for account {account} (attempt {attempt + 1})")
+
+            # Initiate provisioning
+            provision_response = ic_admin.provision_permission_set(
+                InstanceArn=ic_instance_arn,
+                PermissionSetArn=perm_set_arn,
+                TargetType='AWS_ACCOUNT',
+                TargetId=account
+            )
+
+            # Track provisioning status
+            request_id = provision_response['PermissionSetProvisioningStatus']['RequestId']
+            while True:
+                status_response = ic_admin.describe_permission_set_provisioning_status(
+                    InstanceArn=ic_instance_arn,
+                    ProvisionPermissionSetRequestId=request_id
+                )
+                status = status_response['PermissionSetProvisioningStatus']['Status']
+
+                if status == 'SUCCEEDED':
+                    logger.info(
+                        f"Successfully provisioned {perm_set_name} to {account}")
+                    return None
+                elif status in ['FAILED', 'CANCELLED']:
+                    failure_reason = status_response['PermissionSetProvisioningStatus'].get(
+                        'FailureReason', 'Unknown')
+                    raise Exception(f"Provisioning failed: {failure_reason}")
+                sleep(0.5)
+
+        except Exception as error:
+            attempt += 1
+            if attempt >= max_attempts:
+                logger.error(
+                    f"Max retries exceeded for {account}: {str(error)}")
+                return account  # Return failed account for tracking
+
+            base_delay = RETRY_BASE_DELAY * (2 ** attempt)
+            sleep_time = min(base_delay + random.uniform(0, 1),
+                             30)  # Cap at 30 seconds
+            logger.warning(
+                f"Retrying {account} in {sleep_time:.2f}s (attempt {attempt + 1})")
+            sleep(sleep_time)
+
+
+def calculate_batch_size(total_accounts):
+    """Dynamically adjust batch size based on total accounts"""
+    if total_accounts <= 20:
+        return 5
+    elif total_accounts <= 100:
+        return 10
+    else:
+        return 15 + (total_accounts // 50)  # Scale with number of accounts
+
+
+def dynamic_max_attempts(total_accounts):
+    """Dynamically adjust max retry attempts based on total accounts"""
+    base = 7
+    # Max 15 attempts for large deployments
+    return min(base + (total_accounts // 20), 15)
 
 
 def reprovision_permission_sets(perm_set_name, perm_set_arn):
-    """Find and re-provision the drifted permission sets"""
+    """Find and re-provision permission sets"""
+    logger.info(f'Reprovisioning {perm_set_name}')
+    account_ids = get_provisioned_accounts(perm_set_arn)
 
-    logger.info(f'Reprovisioning Permission Set: {perm_set_name}')
-
-    account_ids = get_accounts_by_perm_set(perm_set_arn)
     if not account_ids:
-        logger.info("No accounts found for permission set %s", perm_set_name)
+        logger.info(f"No accounts found for {perm_set_name}")
         return
-
     outdated_accounts = []
     never_provisioned_accounts = []
-    failed_accounts = []
-
     # Check if the permission set is outdated or if it was never provisioned
     for account in account_ids:
+        provisioned_perm_sets = []
         try:
             # check if permission set is provisioned
             provisioned_perm_sets = ic_admin.list_permission_sets_provisioned_to_account(
@@ -1035,256 +1279,107 @@ def reprovision_permission_sets(perm_set_name, perm_set_arn):
             error_message = f'Error occurred during permission set provisioning: {error_msg}'
             log_and_append_error(error_message)
 
+    failed_accounts = []
     # Provision if there are any outdated or non-provisioned permission sets for any accounts
     if outdated_accounts or never_provisioned_accounts:
-        logger.info("Accounts with outdated permission sets: %s",
-                    outdated_accounts if outdated_accounts else "None")
-        logger.info("Accounts with non-provisioned permission sets: %s",
-                    never_provisioned_accounts if never_provisioned_accounts else "None")
-        try:
-            for account in outdated_accounts + never_provisioned_accounts:
-                try:
-                    logger.info(
-                        f"Provisioning {perm_set_name} for account {account}")
-                    provision_response = ic_admin.provision_permission_set(
-                        InstanceArn=ic_instance_arn,
-                        PermissionSetArn=perm_set_arn,
-                        TargetType='AWS_ACCOUNT',
-                        TargetId=account
-                    )
-
-                    request_id = provision_response['PermissionSetProvisioningStatus']['RequestId']
-                    in_progress = True
-                    while in_progress:
-                        status_response = ic_admin.describe_permission_set_provisioning_status(
-                            InstanceArn=ic_instance_arn,
-                            ProvisionPermissionSetRequestId=request_id
-                        )
-                        status = status_response['PermissionSetProvisioningStatus']['Status']
-                        if status == 'SUCCEEDED':
-                            logger.info(
-                                f"Provisioning {perm_set_name} completed successfully for account {account}")
-                            in_progress = False
-                        elif status in ['FAILED', 'CANCELLED']:
-                            failure_reason = status_response['PermissionSetProvisioningStatus'].get(
-                                'FailureReason', 'No error details available')
-                            error_message = f"Provisioning failed for account {account} with status {status} and failure reason: {failure_reason}"
-                            failed_accounts.append(account)
-                            log_and_append_error(error_message)
-                            in_progress = False
-
-                except Exception as error:
-                    error_message = f"Provisioning failed for permission set {perm_set_name} in account {account}: {error}"
-                    log_and_append_error(error_message)
-
-            if failed_accounts:
-                error_message = f"Failed to provision {perm_set_name} for accounts: {str(failed_accounts)}"
-                log_and_append_error(error_message)
-
-        except ic_admin.exceptions.ConflictException as error:
-            logger.warning(
-                "%s The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts", error)
-            sleep(0.5)
-        except ClientError as error:
-            error_message = f'Client error occurred: {error}'
-            log_and_append_error(error_message)
-        except Exception as error:
-            error_message = f'Error occurred while provisioning permission set: {error}'
-            log_and_append_error(error_message)
-    else:
         logger.info(
-            "No outdated or non-provisioned accounts found for %s", perm_set_name)
+            f'Accounts with outdated permission sets: {outdated_accounts if outdated_accounts else "None"} for {perm_set_name}')
+        logger.info(
+            f'Accounts with non-provisioned permission sets: {never_provisioned_accounts if never_provisioned_accounts else "None"} for {perm_set_name}')
+        drifted_account_ids = list(
+            set(outdated_accounts + never_provisioned_accounts))
 
+        # Calculate batch size and max attempts dynamically
+    batch_size = calculate_batch_size(len(account_ids))
+    max_attempts = dynamic_max_attempts(len(account_ids))
 
-def validate_permission_set_schema(permission_set):
-    """
-    Validate the permission set schema.
-    """
-    required_keys = {
-        "Name": str,
-        "Description": str
-    }
+    # Process accounts in batches
+    batches = [account_ids[i:i + batch_size]
+               for i in range(0, len(account_ids), batch_size)]
+    failed_accounts = []
 
-    optional_keys = {
-        "Tags": list,
-        "ManagedPolicies": list,
-        "InlinePolicies": (list, dict),
-        "CustomerPolicies": list,
-        "Session_Duration": str,
-        "PermissionsBoundary": dict
-    }
+    for batch in batches:
+        with ThreadPoolExecutor(max_workers=PERMISSION_WORKERS) as executor:
+            # Create future-account mapping
+            future_to_account = {
+                executor.submit(provision_account, perm_set_name, perm_set_arn, account, max_attempts): account
+                for account in batch
+            }
 
-    permission_set_name = permission_set.get('Name', 'Unknown')
+            for future in as_completed(future_to_account):
+                account = future_to_account[future]
+                try:
+                    if (result := future.result()):
+                        failed_accounts.append(result)
+                except Exception as error:
+                    logger.error(f"Unexpected error for {account}: {error}")
+                    failed_accounts.append(account)
 
-    if 'PermissionsBoundary' in permission_set:
-        boundary = permission_set['PermissionsBoundary']
-        if not isinstance(boundary, dict):
-            log_and_append_error(
-                f"PermissionsBoundary must be a dictionary in permission set {permission_set_name}", errors)
-        else:
-            if "Name" not in boundary:
-                log_and_append_error(
-                    f"PermissionsBoundary must have 'Name' field in permission set {permission_set_name}", errors)
+    # Retry failed accounts with increased max attempts
+    if failed_accounts:
+        logger.info(
+            f"Retrying failed accounts for {perm_set_name}: {failed_accounts}")
+        with ThreadPoolExecutor(max_workers=PERMISSION_WORKERS) as executor:
+            future_to_account = {
+                executor.submit(provision_account, perm_set_name, perm_set_arn, account, max_attempts + 5): account
+                for account in failed_accounts
+            }
 
-            # Check if its a customer managed policy or an aws managed policy
-            if 'Path' in boundary:
-                if not isinstance(boundary['Path'], str):
-                    log_and_append_error(f"PermissionsBoundary Path must be a string in permission set {permission_set_name}.\
-                                         The default is value for a IAM Policy path is '/', or, you can specify the path you used for your IAM Policy",
-                                         errors)
-            elif 'Arn' not in boundary:
-                log_and_append_error(
-                    f"PermissionsBoundary must have either 'Path' for customer managed policy or 'Arn' for AWS managed policy in permission set {permission_set_name}", errors)
+            for future in as_completed(future_to_account):
+                account = future_to_account[future]
+                try:
+                    if (result := future.result()):
+                        logger.error(f"Permanent failure for {account}")
+                except Exception as error:
+                    logger.error(f"Final error for {account}: {error}")
 
-    for key, expected_type in required_keys.items():
-        if key not in permission_set:
-            raise ValueError(
-                f"Missing required key: {key} in permission set {permission_set_name}")
-        if not isinstance(permission_set[key], expected_type):
-            raise TypeError(
-                f"Key '{key}' is not of expected type {expected_type.__name__} in permission set {permission_set_name}")
-
-    for key, expected_type in optional_keys.items():
-        if key in permission_set and not isinstance(permission_set[key], expected_type):
-            raise TypeError(
-                f"Optional key '{key}' is not of expected type {expected_type.__name__} in permission set {permission_set_name}")
+    logger.info(f"Completed reprovisioning for {perm_set_name}")
 
 
 def sync_json_with_aws(local_files, aws_permission_sets):
-    """Synchronize the repository's json files with the AWS Permission Sets"""
-    local_permission_set_names = []
-    try:
-        logger.info("Syncing permission sets into Identity Center")
-        for local_file in local_files:
-            local_customer_policies = []
-            local_session_duration = default_session_duration
-            local_permission_set = local_files[local_file]
-            try:
-                validate_permission_set_schema(local_permission_set)
-            except (ValueError, TypeError) as e:
-                error_message = f'Validation error: {e}'
+    """Parallelized sync function"""
+    all_errors = []
 
-                log_and_append_error(error_message)
-                return
-            logger.info("Syncing %s", local_permission_set['Name'])
-            local_name = local_permission_set['Name']
-            local_desc = local_permission_set.get('Description', '-')
-            local_tags = local_permission_set.get('Tags', [])
-            local_managed_policies = local_permission_set.get(
-                'ManagedPolicies', [])
-            local_inline_policy = local_permission_set.get(
-                'InlinePolicies', [])
-            local_permission_set_names.append(local_name)
-            local_customer_policies = local_permission_set.get(
-                'CustomerPolicies', [])
-            local_session_duration = local_permission_set.get(
-                'Session_Duration', default_session_duration)
-            local_boundary = local_permission_set.get(
-                'PermissionsBoundary', [])
+    # Process existing permission sets in parallel
+    with ThreadPoolExecutor(max_workers=GENERAL_WORKERS) as executor:
+        futures = []
+        for local_file in local_files.values():
+            futures.append(executor.submit(
+                process_permission_set,
+                local_file,
+                aws_permission_sets
+            ))
 
-            # Add permission Set if does not exist in AWS
-            if local_name in aws_permission_sets:
-                logger.info(
-                    '%s exists in IAM Identity Center - checking policy and configuration', local_name)
-            else:
-                # Check if permission set exists in skipped list
-                skipped = False
-                for perm_set_arn, perm_set_name in skipped_perm_set.items():
-                    if local_name == perm_set_name:
-                        skipped = True
-                        logger.warning(
-                            'WARNING: Permission set %s already exists and is either managed by Control Tower, or provisioned in the management account. \
-                            Please create a different permission set that will not be provisioned in the management account or not managed by Control Tower.', local_name)
-                        break
+        for future in as_completed(futures):
+            all_errors.extend(future.result())
 
-                if not skipped:
-                    logger.info(
-                        'ADD OPERATION: %s does not exist in IAM Identity Center - adding...', local_name)
-                    created_perm_set = create_permission_set(
-                        local_name, local_desc, local_tags, local_session_duration)
-                    created_perm_set_name = created_perm_set['PermissionSet']['Name']
-                    created_perm_set_arn = created_perm_set['PermissionSet']['PermissionSetArn']
-                    created_perm_set_desc = created_perm_set['PermissionSet']['Description']
-                    aws_permission_sets[created_perm_set_name] = {
-                        'Arn': created_perm_set_arn,
-                        'Description': created_perm_set_desc
-                    }
+    # Delete obsolete permission sets
+    delete_errors = delete_obsolete_permission_sets(
+        local_files, aws_permission_sets)
+    all_errors.extend(delete_errors)
 
-            # Check if permission set exists in skipped list
-            skipped = False
-            for perm_set_arn, perm_set_name in skipped_perm_set.items():
-                if local_name == perm_set_name:
-                    skipped = True
-                    logger.warning(
-                        'WARNING: Permission set %s already exists and is either managed by Control Tower, or provisioned in the management account. \
-                        This Permission Set will not be synced', local_name)
-                    break
-            if not skipped:
-                # Synchronize properties for all local permission sets with account.
-                sync_managed_policies(
-                    local_name, local_managed_policies, aws_permission_sets[local_name]['Arn'])
-                sync_customer_policies(
-                    local_name, local_customer_policies, aws_permission_sets[local_name]['Arn'])
-                sync_inline_policies(
-                    local_name, local_inline_policy, aws_permission_sets[local_name]['Arn'])
-                sync_description(local_name, aws_permission_sets[local_name]['Arn'], local_desc,
-                                 aws_permission_sets[local_name]['Description'], local_session_duration)
-                sync_tags(local_name, local_tags,
-                          aws_permission_sets[local_name]['Arn'])
-                sync_permissions_boundary(
-                    local_name, local_boundary, aws_permission_sets[local_name]['Arn'])
-                reprovision_permission_sets(
-                    local_name, aws_permission_sets[local_name]['Arn'])
-
-        # Delete if permission set exists in account but not on the local
-        for aws_perm_set in aws_permission_sets:
-            if not aws_perm_set in local_permission_set_names:
-                try:
-                    skipped = False
-                    for perm_set_arn, perm_set_name in skipped_perm_set.items():
-                        if aws_perm_set == perm_set_name:
-                            skipped = True
-                            logger.warning(
-                                'WARNING: Permission set %s already exists and is either managed by Control Tower, or provisioned in the management account. \
-                                Please create a different permission set that will not be provisioned in the management account or not managed by Control Tower.', aws_perm_set)
-                            break
-                    if not skipped:
-                        logger.info(
-                            'DELETE OPERATION: %s does not exist locally - deleting...', aws_perm_set)
-                        deprovision_permission_set_from_accounts(
-                            aws_permission_sets[aws_perm_set]['Arn'], aws_perm_set)
-                        delete_permission_set(
-                            aws_permission_sets[aws_perm_set]['Arn'], aws_perm_set)
-                except Exception as error:
-                    error_message = f'Delete failed due to: {error}'
-                    log_and_append_error(error_message)
-    except Exception as error:
-        error_message = f'Sync AWS permission sets failed. Error: {error}'
-        # traceback.print_exc()
-        log_and_append_error(error_message)
-        if errors:
-            error_message = 'Errors encountered during processing:\n' + \
-                '\n'.join(str(error) for error in errors)
-            logger.error(error_message)
-        sys.exit(1)
-    return "Synchronized AWS Permission Sets with new updated definition."
+    return all_errors
 
 
 def start_automation():
+    logger.debug(f"Delegated: {delegated}")
+    delegated_admin = delegated == 'true'
     try:
         logger.info("The automation process is now started.")
-        if delegated == "true":
-            aws_permission_sets = get_all_permission_sets_if_delegate()
-            logger.info("The existing aws_permission_sets are : %s",
-                        aws_permission_sets)
-        else:
-            aws_permission_sets = get_all_permission_sets()
-            logger.info("The existing aws_permission_sets are : %s",
-                        aws_permission_sets)
-        # Get the permission set's baseline by loading S3 bucket files
-        json_files = get_all_json_files(ic_bucket_name)
-        sync_json_with_aws(json_files, aws_permission_sets)
-        # Next function auto-assignment will be executed after this function ends
+
+        # Get state
+        aws_permission_sets = get_all_permission_sets(delegated_admin)
+        if skipped_perm_set:
+            try:
+                sync_table_for_skipped_perm_sets(skipped_perm_set)
+            except Exception as error:
+                error_message = f'Failed to invoke sync_table_for_skipped_perm_sets: {error}'
+                log_and_append_error(error_message)
+        local_files = get_all_json_files(ic_bucket_name)
+
+        # Process sync
+        sync_json_with_aws(local_files, aws_permission_sets)
+
         logger.info("Execution completed! \
                     Check the auto permission set function logs for further execution details.")
         logger.info(f'Codebuild logs contain combined logs for the build project.\
@@ -1296,13 +1391,10 @@ def start_automation():
         log_and_append_error(error_message)
 
 
+# @profile(stdout=False, filename='profile_permission_sets.prof')
 def main(event=None):
     """
     Main function to handle Pipeline triggered and EventBridge triggered events for permission set automation.
-
-    Args:
-        event (dict, optional): Event payload if triggered by EventBridge Rules.
-        Defaults to None.
     """
 
     global errors
