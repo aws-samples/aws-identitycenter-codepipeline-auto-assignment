@@ -1279,7 +1279,7 @@ def sync_tags(local_name, local_tags, perm_set_arn):
 def is_account_active(account_id):
     """Check if the AWS account is active (not suspended or pending closure)"""
     try:
-        response = orgs_client.describe_account(AccountId=account_id)
+        response = execute_with_retry(orgs_client.describe_account,AccountId=account_id)
         if response['Account']['Status'] == 'ACTIVE':
             return True
     except Exception as error:
