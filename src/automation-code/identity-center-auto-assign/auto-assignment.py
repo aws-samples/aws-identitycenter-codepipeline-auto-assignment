@@ -32,7 +32,7 @@ AWS_CONFIG = Config(
         max_attempts=5,
         mode='adaptive'
     ),
-    max_pool_connections=10+ASSIGNMENT_WORKERS + GENERAL_WORKERS
+    max_pool_connections=(ASSIGNMENT_WORKERS + GENERAL_WORKERS)*2
 )
 
 runtime_region = os.getenv('AWS_REGION')

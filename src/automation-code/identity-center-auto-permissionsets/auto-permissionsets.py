@@ -26,7 +26,7 @@ AWS_CONFIG = Config(
         max_attempts=5,
         mode='adaptive'
     ),
-    max_pool_connections=20+GENERAL_WORKERS
+    max_pool_connections=GENERAL_WORKERS*2
 )
 
 # Global provisioning task store with thread-safe lock
@@ -36,8 +36,7 @@ provisioning_lock = Lock()
 runtime_region = os.getenv('AWS_REGION')
 ic_bucket_name = os.getenv('IC_S3_BucketName')
 s3 = boto3.resource('s3')
-orgs_client = boto3.client('organizations', region_name=runtime_region)
-sns_client = boto3.client('sns', region_name=runtime_region)
+orgs_client = boto3.client('organizations', region_name=runtime_region, config=AWS_CONFIG)
 ic_admin = boto3.client(
     'sso-admin', region_name=runtime_region, config=AWS_CONFIG)
 ic_instance_arn = os.getenv('IC_InstanceArn')
