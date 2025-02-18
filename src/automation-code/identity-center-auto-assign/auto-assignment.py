@@ -490,6 +490,8 @@ def generate_expected_assignments(global_mappings, target_mappings, current_aws_
     """Generate expected assignments using set operations"""
     expected = set()
 
+    active_account_ids = {account['Id'] for account in active_accounts}
+
     # Process global mappings
     for mapping in global_mappings:
         if str(mapping.get('Target', '')).upper() != "GLOBAL":
@@ -501,8 +503,8 @@ def generate_expected_assignments(global_mappings, target_mappings, current_aws_
             perm_set_arn = current_aws_permission_sets.get(
                 perm_set_name, {}).get('Arn')
             if perm_set_arn:
-                for account in active_accounts:
-                    expected.add((account['Id'], perm_set_arn, group_id))
+                for account_id in active_accounts:
+                    expected.add((account_id, perm_set_arn, group_id))
 
     # Process target mappings
     for mapping in target_mappings:
@@ -519,7 +521,8 @@ def generate_expected_assignments(global_mappings, target_mappings, current_aws_
                     target_field if isinstance(target_field, list) else [
                         target_field]
                 )
-                for account_id in resolved_accounts:
+                valid_accounts = set(resolved_accounts) & active_account_ids
+                for account_id in valid_accounts:
                     expected.add((account_id, perm_set_arn, group_id))
 
     return expected
@@ -619,7 +622,7 @@ def drift_detect_update(all_assignments, expected_assignments, current_aws_permi
         for a in all_assignments
     }
     drift_set = current_set - expected_assignments
-    
+
     if not drift_set:
         logger.info(
             "No drifted assignments found in Identity Center. Skipping drift detection.")
