@@ -503,7 +503,7 @@ def generate_expected_assignments(global_mappings, target_mappings, current_aws_
             perm_set_arn = current_aws_permission_sets.get(
                 perm_set_name, {}).get('Arn')
             if perm_set_arn:
-                for account_id in active_accounts:
+                for account_id in active_account_ids:
                     expected.add((account_id, perm_set_arn, group_id))
 
     # Process target mappings
