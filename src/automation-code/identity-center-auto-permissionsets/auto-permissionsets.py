@@ -320,13 +320,14 @@ def is_provisioned_or_outdated(perm_set_name, perm_set_arn, account):
     """Check if account needs provisioning"""
     try:
         # Check never provisioned
-        provisioned = ic_admin.list_permission_sets_provisioned_to_account(
-            InstanceArn=ic_instance_arn,
-            AccountId=account
-        ).get('PermissionSets', [])
-
-        if perm_set_arn not in provisioned:
-            return (perm_set_name, perm_set_arn, account, 'never_provisioned')
+        provisioned = []
+        paginator = ic_admin.get_paginator('list_permission_sets_provisioned_to_account')
+        for page in paginator.paginate(InstanceArn=ic_instance_arn,AccountId=account):
+            provisioned.extend(page.get('PermissionSets', []))
+    
+        if provisioned:
+            if perm_set_arn not in provisioned:
+                return (perm_set_name, perm_set_arn, account, 'never_provisioned')
 
         # Check outdated
         outdated = ic_admin.list_permission_sets_provisioned_to_account(
@@ -519,11 +520,11 @@ def deprovisioning_job(permission_sets):
 def deprovision_account(perm_set_arn, perm_set_name, account):
     """Deprovision a permission set from a specific account"""
     try:
-        assignments = ic_admin.list_account_assignments(
-            InstanceArn=ic_instance_arn,
-            AccountId=account,
-            PermissionSetArn=perm_set_arn
-        )['AccountAssignments']
+        assignments = []
+        paginator = ic_admin.get_paginator('list_account_assignments')
+        for page in paginator.paginate(InstanceArn=ic_instance_arn, AccountId=account, PermissionSetArn=perm_set_arn
+        )['AccountAssignments']:
+            assignments.extend(page.get('AccountAssignments', []))
 
         for assignment in assignments:
             delete_response = ic_admin.delete_account_assignment(
