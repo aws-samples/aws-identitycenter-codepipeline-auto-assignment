@@ -409,6 +409,7 @@ def is_required_deprovisioning(perm_set_name, perm_set_arn):
     account_ids = get_provisioned_accounts(perm_set_arn)
     if not account_ids:
         logger.info(f"No accounts found for {perm_set_name}")
+        deprovisioning_tasks.append((perm_set_name, perm_set_arn, None))
         return deprovisioning_tasks
 
     active_accounts = [account for account in account_ids
@@ -455,40 +456,47 @@ def deprovisioning_job(permission_sets):
                         confirmed_tasks.extend(result)
                 except Exception as error:
                     log_and_append_error(f"Deprovisioning check failed: {error}")
-        if not confirmed_tasks:
+        # if not confirmed_tasks:
+        #     logger.info("No permission sets require deprovisioning")
+        #     return
+        deprovisioning_needed = [(name, arn, account) for name, arn, account in confirmed_tasks if account is not None]
+        deletion_only = [(name, arn) for name, arn, account in confirmed_tasks if account is None]
+
+        if not deprovisioning_needed:
             logger.info("No permission sets require deprovisioning")
-            return
+        if deprovisioning_needed:
+            logger.info(f"Starting deprovisioning of {len(deprovisioning_needed)} tasks")
+            # Process in batches of 10
+            for i in range(0, len(deprovisioning_needed), 10):
+                batch = deprovisioning_needed[i:i + 10]
+                logger.info(
+                    f"Processing batch {i//10 + 1}: {len(batch)} assignments")
 
-        logger.info(f"Starting deprovisioning of {len(confirmed_tasks)} tasks")
-        # Process in batches of 10
-        for i in range(0, len(confirmed_tasks), 10):
-            batch = confirmed_tasks[i:i + 10]
-            logger.info(
-                f"Processing batch {i//10 + 1}: {len(batch)} assignments")
+                # 10 parallel jobs to stay under IdC API throttle limits
+                with ThreadPoolExecutor(max_workers=10) as executor:
+                    futures = [
+                        executor.submit(
+                            execute_with_retry,
+                            deprovision_account,
+                            perm_set_arn,
+                            perm_set_name,
+                            account
+                        ) for perm_set_name, perm_set_arn, account in batch
+                    ]
 
-            # 10 parallel jobs to stay under IdC API throttle limits
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                futures = [
-                    executor.submit(
-                        execute_with_retry,
-                        deprovision_account,
-                        perm_set_arn,
-                        perm_set_name,
-                        account
-                    ) for perm_set_name, perm_set_arn, account in batch
-                ]
+                    # Wait for all tasks in this batch to complete
+                    for future in as_completed(futures):
+                        try:
+                            success, name, arn = future.result()
+                            if success:
+                                deprovisioned_sets.add((name, arn))
+                        except Exception as error:
+                            log_and_append_error(f"Deprovisioning failed: {error}")
 
-                # Wait for all tasks in this batch to complete
-                for future in as_completed(futures):
-                    try:
-                        success, name, arn = future.result()
-                        if success:
-                            deprovisioned_sets.add((name, arn))
-                    except Exception as error:
-                        log_and_append_error(f"Deprovisioning failed: {error}")
+                if i + 10 < len(deprovisioning_needed):
+                    time.sleep(2)
 
-            if i + 10 < len(confirmed_tasks):
-                time.sleep(2)
+        deprovisioned_sets.update(deletion_only)
 
         if deprovisioned_sets:
             logger.info(
@@ -506,7 +514,7 @@ def deprovisioning_job(permission_sets):
                 for future in as_completed(deletion_futures):
                     try:
                         name, arn = future.result()
-                        logger.info(
+                        logger.debug(
                             f"Successfully deleted permission set: {name}")
                     except Exception as error:
                         log_and_append_error(
@@ -520,6 +528,8 @@ def deprovisioning_job(permission_sets):
 def deprovision_account(perm_set_arn, perm_set_name, account):
     """Deprovision a permission set from a specific account"""
     try:
+        if account is None:
+            return True, perm_set_name, perm_set_arn
         assignments = []
         paginator = ic_admin.get_paginator('list_account_assignments')
         for page in paginator.paginate(InstanceArn=ic_instance_arn, AccountId=account, PermissionSetArn=perm_set_arn
