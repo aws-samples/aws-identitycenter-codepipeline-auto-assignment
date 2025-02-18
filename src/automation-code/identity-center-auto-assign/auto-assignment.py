@@ -330,7 +330,7 @@ def get_all_permission_sets(delegated_admin=False):
                 return {name: {'Arn': arn}}
 
             except Exception as e:
-                logger.error(f"Error processing {arn}: {str(e)}")
+                log_and_append_error(f"Error processing {arn}: {str(e)}")
                 return None
 
         with ThreadPoolExecutor(max_workers=GENERAL_WORKERS) as executor:
@@ -349,7 +349,7 @@ def get_all_permission_sets(delegated_admin=False):
         return permission_sets
 
     except Exception as error:
-        logger.error(f"Permission set processing failed: {str(error)}")
+        log_and_append_error(f"Permission set processing failed: {str(error)}")
         raise
 
 
@@ -469,7 +469,7 @@ def list_all_current_account_assignment(active_accounts, current_aws_permission_
                 assignments.extend(page['AccountAssignments'])
             return [a for a in assignments if a['PrincipalType'] == 'GROUP']
         except Exception as error:
-            logger.error(f"Error processing {account['Id']}: {error}")
+            log_and_append_error(f"Error processing {account['Id']}: {error}")
             return []
 
     with ThreadPoolExecutor(max_workers=GENERAL_WORKERS) as executor:
@@ -575,7 +575,7 @@ def create_required_assignments(expected_assignments, current_assignments, curre
                     track_creation_status(
                         result['AccountAssignmentCreationStatus']['RequestId'])
             except Exception as e:
-                logger.error(f"Assignment creation failed: {str(e)}")
+                log_and_append_error(f"Assignment creation failed: {str(e)}")
 
 
 def process_assignment_creation(target_account_id, perm_set_arn, group_id, perm_set_name, progress_counter):
@@ -596,7 +596,7 @@ def process_assignment_creation(target_account_id, perm_set_arn, group_id, perm_
             progress_counter()
         return response
     except Exception as error:
-        logger.error(f"Assignment creation failed: {str(error)}")
+        log_and_append_error(f"Assignment creation failed: {str(error)}")
         return None
 
 
@@ -610,7 +610,7 @@ def track_creation_status(request_id):
 
         if status['Status'] != 'IN_PROGRESS':
             if status['Status'] != 'SUCCEEDED':
-                logger.error(
+                log_and_append_error(
                     f"Creation failed: {status.get('FailureReason', 'Unknown')}")
             break
         sleep(0.5)
@@ -664,7 +664,7 @@ def drift_detect_update(all_assignments, expected_assignments, current_aws_permi
             try:
                 future.result()
             except Exception as e:
-                logger.error(f"Drift cleanup failed: {str(e)}")
+                log_and_append_error(f"Drift cleanup failed: {str(e)}")
 
 
 def process_drift_cleanup(delta_assignment, perm_set_name, progress_counter):
@@ -689,14 +689,14 @@ def process_drift_cleanup(delta_assignment, perm_set_name, progress_counter):
             )['AccountAssignmentDeletionStatus']
             if status['Status'] != 'IN_PROGRESS':
                 if status['Status'] != 'SUCCEEDED':
-                    logger.error(
+                    log_and_append_error(
                         f"Deletion failed: {status.get('FailureReason', 'Unknown')}")
                 break
         if progress_counter:
             progress_counter()
             sleep(0.5)
     except Exception as error:
-        logger.error(f"Drift cleanup failed: {str(error)}")
+        log_and_append_error(f"Drift cleanup failed: {str(error)}")
 
 
 def get_global_mapping_contents(bucketname, global_mapping_file):

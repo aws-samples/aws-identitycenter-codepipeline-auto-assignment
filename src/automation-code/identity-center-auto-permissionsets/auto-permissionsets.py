@@ -198,7 +198,7 @@ def execute_with_retry(func, *args, **kwargs):
             base_delay = RETRY_BASE_DELAY * (2 ** attempt)
             sleep(base_delay + random.uniform(0, 1))
         except Exception as error:
-            logger.error(f"Unexpected error in {func.__name__}: {str(error)}")
+            log_and_append_error(f"Unexpected error in {func.__name__}: {str(error)}")
             raise
 
 
@@ -310,7 +310,7 @@ def is_required_provisioning(perm_set_name, perm_set_arn):
                         provisioning_tasks.append(result)
                         needs_provisioning = True
             except Exception as error:
-                logger.error(f"Provisioning check failed: {error}")
+                log_and_append_error(f"Provisioning check failed: {error}")
     if not needs_provisioning:
         logger.info(
             f"Permission set {perm_set_name} is up-to-date and requires no provisioning")
@@ -339,7 +339,7 @@ def is_provisioned_or_outdated(perm_set_name, perm_set_arn, account):
             return (perm_set_name, perm_set_arn, account, 'outdated')
 
     except Exception as error:
-        logger.error(f"Status check failed for {account}: {str(error)}")
+        log_and_append_error(f"Status check failed for {account}: {str(error)}")
     logger.debug(f"No provisioning required for {perm_set_name}")
     return None
 
@@ -359,7 +359,7 @@ def provisioning_job():
         try:
             provision_account(perm_set_name, perm_set_arn, account)
         except Exception as error:
-            logger.error(f"Failed to provision {account}: {str(error)}")
+            log_and_append_error(f"Failed to provision {account}: {str(error)}")
 
         if idx < len(provisioning_tasks):
             time.sleep(3)
@@ -453,7 +453,7 @@ def deprovisioning_job(permission_sets):
                     if result:  # If deprovisioning is required
                         confirmed_tasks.extend(result)
                 except Exception as error:
-                    logger.error(f"Deprovisioning check failed: {error}")
+                    log_and_append_error(f"Deprovisioning check failed: {error}")
         if not confirmed_tasks:
             logger.info("No permission sets require deprovisioning")
             return
@@ -484,7 +484,7 @@ def deprovisioning_job(permission_sets):
                         if success:
                             deprovisioned_sets.add((name, arn))
                     except Exception as error:
-                        logger.error(f"Deprovisioning failed: {error}")
+                        log_and_append_error(f"Deprovisioning failed: {error}")
 
             if i + 10 < len(confirmed_tasks):
                 time.sleep(2)
@@ -508,11 +508,11 @@ def deprovisioning_job(permission_sets):
                         logger.info(
                             f"Successfully deleted permission set: {name}")
                     except Exception as error:
-                        logger.error(
+                        log_and_append_error(
                             f"Permission set deletion failed: {error}")
 
     except Exception as error:
-        logger.error(f"Error in deprovisioning job: {error}")
+        log_and_append_error(f"Error in deprovisioning job: {error}")
         raise
 
 
@@ -555,7 +555,7 @@ def deprovision_account(perm_set_arn, perm_set_name, account):
         )
         return True, perm_set_name, perm_set_arn
     except Exception as error:
-        logger.error(
+        log_and_append_error(
             f"Failed to deprovision {perm_set_name} from {account}: {str(error)}"
         )
         return False, perm_set_name, perm_set_arn
@@ -718,7 +718,7 @@ def get_all_permission_sets(delegated_admin=False):
                 })
 
             except Exception as e:
-                logger.error(f"Error processing {arn}: {str(e)}")
+                log_and_append_error(f"Error processing {arn}: {str(e)}")
                 return None
 
         with ThreadPoolExecutor(max_workers=GENERAL_WORKERS) as executor:
@@ -737,7 +737,7 @@ def get_all_permission_sets(delegated_admin=False):
         cache.set(cache_key, permission_sets)
         return permission_sets
     except Exception as error:
-        logger.error(f"Permission set processing failed: {str(error)}")
+        log_and_append_error(f"Permission set processing failed: {str(error)}")
         raise
 
 
@@ -769,7 +769,7 @@ def get_provisioned_accounts(perm_set_arn):
         cache.set(cache_key, accounts)
         return accounts
     except Exception as e:
-        logger.error(f"Failed to get provisioned accounts: {str(e)}")
+        log_and_append_error(f"Failed to get provisioned accounts: {str(e)}")
         raise
 
 
@@ -783,7 +783,7 @@ def is_control_tower_managed(perm_set_arn):
         )['Tags']
         return any(t['Key'] == 'managedBy' and t['Value'] == 'ControlTower' for t in tags)
     except Exception as e:
-        logger.error(f"Failed to check Control Tower status: {str(e)}")
+        log_and_append_error(f"Failed to check Control Tower status: {str(e)}")
         return False
 
 
@@ -800,13 +800,13 @@ def get_all_json_files(bucket_name):
                     with open("/tmp/each_permission_set.json") as f:
                         file_contents[s3_object.key] = json.load(f)
                 except json.JSONDecodeError as json_error:
-                    logger.error(
+                    log_and_append_error(
                         f'Error decoding JSON in file {s3_object.key}: {json_error}')
                 except Exception as error:
-                    logger.error(
+                    log_and_append_error(
                         f'Cannot load permission set content from file {s3_object.key}: {error}')
     except Exception as error:
-        logger.error(
+        log_and_append_error(
             f'Cannot load permission set content from s3 file: {error}')
     return file_contents
 
