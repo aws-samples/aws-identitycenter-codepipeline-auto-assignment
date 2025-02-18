@@ -619,13 +619,7 @@ def drift_detect_update(all_assignments, expected_assignments, current_aws_permi
         for a in all_assignments
     }
     drift_set = current_set - expected_assignments
-
-    with ThreadPoolExecutor(max_workers=ASSIGNMENT_WORKERS) as executor:
-        futures = [
-            executor.submit(process_drift_cleanup, delta, perm_set_name)
-            for delta in drift_set
-        ]
-        # ...
+    
     if not drift_set:
         logger.info(
             "No drifted assignments found in Identity Center. Skipping drift detection.")
