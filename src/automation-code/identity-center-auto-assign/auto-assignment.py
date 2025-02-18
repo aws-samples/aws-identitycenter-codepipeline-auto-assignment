@@ -143,6 +143,16 @@ class CacheManager:
         self._sets += 1
         logger.debug(f"Cache SET for key: {key}")
 
+    def delete(self, key):
+        """Delete a key from the cache"""
+        if key in self._cache:
+            del self._cache[key]
+            del self._timestamps[key]
+            self._deletes += 1
+            logger.debug(f"Cache DELETE for key: {key}")
+            return True
+        return False
+
     def get_stats(self):
         """Return cache statistics"""
         total_requests = self._hits + self._misses
