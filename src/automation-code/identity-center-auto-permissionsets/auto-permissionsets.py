@@ -114,6 +114,7 @@ class CacheManager:
         self._hits = 0
         self._misses = 0
         self._sets = 0
+        self._deletes = 0
 
     def get(self, key):
         current_time = time.time()
