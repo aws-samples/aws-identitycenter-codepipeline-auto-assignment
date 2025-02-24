@@ -36,7 +36,8 @@ provisioning_lock = Lock()
 runtime_region = os.getenv('AWS_REGION')
 ic_bucket_name = os.getenv('IC_S3_BucketName')
 s3 = boto3.resource('s3')
-orgs_client = boto3.client('organizations', region_name=runtime_region, config=AWS_CONFIG)
+orgs_client = boto3.client(
+    'organizations', region_name=runtime_region, config=AWS_CONFIG)
 ic_admin = boto3.client(
     'sso-admin', region_name=runtime_region, config=AWS_CONFIG)
 ic_instance_arn = os.getenv('IC_InstanceArn')
@@ -106,6 +107,7 @@ def log_and_append_error(message):
 logger.info("Logging initialized")
 
 CACHE_TTL = 1800  # 30 minutes
+
 
 class CacheManager:
     def __init__(self):
@@ -198,7 +200,8 @@ def execute_with_retry(func, *args, **kwargs):
             base_delay = RETRY_BASE_DELAY * (2 ** attempt)
             sleep(base_delay + random.uniform(0, 1))
         except Exception as error:
-            log_and_append_error(f"Unexpected error in {func.__name__}: {str(error)}")
+            log_and_append_error(
+                f"Unexpected error in {func.__name__}: {str(error)}")
             raise
 
 
@@ -209,6 +212,7 @@ def process_permission_set(local_perm_set, aws_permission_sets):
     local_description = local_perm_set.get('Description', '')
     local_session_duration = local_perm_set.get(
         'Session_Duration', default_session_duration)
+    local_tags = local_perm_set.get('Tags', [])
 
     # Check if this permission set should be skipped
     global skipped_perm_set
@@ -222,7 +226,6 @@ def process_permission_set(local_perm_set, aws_permission_sets):
             logger.info(f"Permission set {perm_set_name} exists. Syncing.")
             perm_set_arn = aws_permission_sets[perm_set_name]['Arn']
             aws_session_duration = aws_permission_sets[perm_set_name]['SessionDuration']
-            local_tags = local_perm_set.get('Tags', [])
             aws_description = aws_permission_sets[perm_set_name]['Description']
         else:
             # Create new permission set
@@ -321,10 +324,11 @@ def is_provisioned_or_outdated(perm_set_name, perm_set_arn, account):
     try:
         # Check never provisioned
         provisioned = []
-        paginator = ic_admin.get_paginator('list_permission_sets_provisioned_to_account')
-        for page in paginator.paginate(InstanceArn=ic_instance_arn,AccountId=account):
+        paginator = ic_admin.get_paginator(
+            'list_permission_sets_provisioned_to_account')
+        for page in paginator.paginate(InstanceArn=ic_instance_arn, AccountId=account):
             provisioned.extend(page.get('PermissionSets', []))
-    
+
         if provisioned:
             if perm_set_arn not in provisioned:
                 return (perm_set_name, perm_set_arn, account, 'never_provisioned')
@@ -340,7 +344,8 @@ def is_provisioned_or_outdated(perm_set_name, perm_set_arn, account):
             return (perm_set_name, perm_set_arn, account, 'outdated')
 
     except Exception as error:
-        log_and_append_error(f"Status check failed for {account}: {str(error)}")
+        log_and_append_error(
+            f"Status check failed for {account}: {str(error)}")
     logger.debug(f"No provisioning required for {perm_set_name}")
     return None
 
@@ -360,7 +365,8 @@ def provisioning_job():
         try:
             provision_account(perm_set_name, perm_set_arn, account)
         except Exception as error:
-            log_and_append_error(f"Failed to provision {account}: {str(error)}")
+            log_and_append_error(
+                f"Failed to provision {account}: {str(error)}")
 
         if idx < len(provisioning_tasks):
             time.sleep(3)
@@ -455,17 +461,21 @@ def deprovisioning_job(permission_sets):
                     if result:  # If deprovisioning is required
                         confirmed_tasks.extend(result)
                 except Exception as error:
-                    log_and_append_error(f"Deprovisioning check failed: {error}")
+                    log_and_append_error(
+                        f"Deprovisioning check failed: {error}")
         # if not confirmed_tasks:
         #     logger.info("No permission sets require deprovisioning")
         #     return
-        deprovisioning_needed = [(name, arn, account) for name, arn, account in confirmed_tasks if account is not None]
-        deletion_only = [(name, arn) for name, arn, account in confirmed_tasks if account is None]
+        deprovisioning_needed = [(name, arn, account) for name,
+                                 arn, account in confirmed_tasks if account is not None]
+        deletion_only = [(name, arn) for name, arn,
+                         account in confirmed_tasks if account is None]
 
         if not deprovisioning_needed:
             logger.info("No permission sets require deprovisioning")
         if deprovisioning_needed:
-            logger.info(f"Starting deprovisioning of {len(deprovisioning_needed)} tasks")
+            logger.info(
+                f"Starting deprovisioning of {len(deprovisioning_needed)} tasks")
             # Process in batches of 10
             for i in range(0, len(deprovisioning_needed), 10):
                 batch = deprovisioning_needed[i:i + 10]
@@ -491,7 +501,8 @@ def deprovisioning_job(permission_sets):
                             if success:
                                 deprovisioned_sets.add((name, arn))
                         except Exception as error:
-                            log_and_append_error(f"Deprovisioning failed: {error}")
+                            log_and_append_error(
+                                f"Deprovisioning failed: {error}")
 
                 if i + 10 < len(deprovisioning_needed):
                     time.sleep(2)
@@ -533,7 +544,7 @@ def deprovision_account(perm_set_arn, perm_set_name, account):
         assignments = []
         paginator = ic_admin.get_paginator('list_account_assignments')
         for page in paginator.paginate(InstanceArn=ic_instance_arn, AccountId=account, PermissionSetArn=perm_set_arn
-        )['AccountAssignments']:
+                                       )['AccountAssignments']:
             assignments.extend(page.get('AccountAssignments', []))
 
         for assignment in assignments:
@@ -820,30 +831,6 @@ def get_all_json_files(bucket_name):
         log_and_append_error(
             f'Cannot load permission set content from s3 file: {error}')
     return file_contents
-
-
-def create_permission_set(name, desc, tags, session_duration):
-    """Create a permission set in AWS IAM Identity Center"""
-    logger.info(f"Creating permission set: {name}")
-    try:
-        response = ic_admin.create_permission_set(
-            Name=name,
-            Description=desc,
-            InstanceArn=ic_instance_arn,
-            SessionDuration=session_duration,
-            Tags=tags
-        )
-    except ic_admin.exceptions.ConflictException as error:
-        logger.info("%sThe same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
-        sleep(0.5)
-    except ClientError as error:
-        error_message = f'Client error occurred: {error}'
-        log_and_append_error(error_message)
-    except Exception as error:
-        error_message = f'Error occurred: {error}'
-        log_and_append_error(error_message)
-    cache.set(f"permsets_{delegated}", None)
-    return response
 
 
 def add_managed_policy_to_perm_set(local_name, perm_set_arn, managed_policy_arn):
@@ -1300,7 +1287,8 @@ def sync_tags(local_name, local_tags, perm_set_arn):
 def is_account_active(account_id):
     """Check if the AWS account is active (not suspended or pending closure)"""
     try:
-        response = execute_with_retry(orgs_client.describe_account,AccountId=account_id)
+        response = execute_with_retry(
+            orgs_client.describe_account, AccountId=account_id)
         if response['Account']['Status'] == 'ACTIVE':
             return True
     except Exception as error:
