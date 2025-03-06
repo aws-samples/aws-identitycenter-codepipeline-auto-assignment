@@ -8,6 +8,6 @@ phases:
       - echo "Sync mapping files to S3 secure bucket"
       - pwd
       - ls -lah
-      - aws s3 sync --delete  identity-center-mapping-info/ s3://$S3_BUCKET_NAME/ --exclude "identity-center-auto-assign.zip" --exclude "identity-center-auto-permissionsets.zip"
+      - aws s3 sync --delete identity-center-mapping-info/ s3://$S3_BUCKET_NAME/ --exclude "identity-center-auto-assign.zip" --exclude "identity-center-auto-permissionsets.zip"
       - aws s3api list-objects-v2 --bucket $S3_BUCKET_NAME
       - echo "Sync done."
