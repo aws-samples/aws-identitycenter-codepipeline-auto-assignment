@@ -255,11 +255,10 @@ def process_permission_set(local_perm_set, aws_permission_sets):
         with ThreadPoolExecutor(max_workers=len(components)) as executor:
             futures = []
             for key, func in components:
-                if key in local_perm_set:
-                    futures.append(executor.submit(
-                        execute_with_retry, func, perm_set_name,
-                        local_perm_set.get(key, []), perm_set_arn
-                    ))
+                futures.append(executor.submit(
+                    execute_with_retry, func, perm_set_name,
+                    local_perm_set.get(key, []), perm_set_arn
+                ))
             futures.append(executor.submit(
                 execute_with_retry, sync_description, perm_set_name, perm_set_arn,
                 local_description, aws_description
