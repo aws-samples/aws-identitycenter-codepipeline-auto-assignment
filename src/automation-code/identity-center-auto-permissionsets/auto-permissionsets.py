@@ -258,7 +258,7 @@ def process_permission_set(local_perm_set, aws_permission_sets):
                 if key in local_perm_set:
                     futures.append(executor.submit(
                         execute_with_retry, func, perm_set_name,
-                        local_perm_set[key], perm_set_arn
+                        local_perm_set.get(key, []), perm_set_arn
                     ))
             futures.append(executor.submit(
                 execute_with_retry, sync_description, perm_set_name, perm_set_arn,
