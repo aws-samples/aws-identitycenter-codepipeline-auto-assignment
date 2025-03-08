@@ -111,6 +111,8 @@ def log_and_append_error(message):
 logger.info("Logging initialized")
 
 # Cache storage
+
+
 class CacheManager:
     def __init__(self):
         self._cache = {}
@@ -293,7 +295,10 @@ def get_all_permission_sets(delegated_admin=False):
         # List all permission set ARNs
         paginator = ic_admin.get_paginator('list_permission_sets')
         all_arns = []
-        for page in paginator.paginate(InstanceArn=ic_instance_arn):
+        for page in execute_with_retry(
+            paginator.paginate,
+            InstanceArn=ic_instance_arn
+        ):
             all_arns.extend(page['PermissionSets'])
 
         def process_perm_set(arn):
@@ -306,11 +311,15 @@ def get_all_permission_sets(delegated_admin=False):
                 ps = desc_response['PermissionSet']
                 name = ps['Name']
 
-                tags = execute_with_retry(
-                    ic_admin.list_tags_for_resource,
+                tags = []
+                paginator = ic_admin.get_paginator('list_tags_for_resource')
+                for page in execute_with_retry(
+                    paginator.paginate,
                     InstanceArn=ic_instance_arn,
                     ResourceArn=arn
-                )['Tags']
+                ):
+                    tags.extend(page['Tags'])
+
                 if any(t['Key'] == 'managedBy' and t['Value'] == 'ControlTower' for t in tags):
                     skipped.add((name, arn, "Control Tower"))
                     return None
@@ -319,7 +328,8 @@ def get_all_permission_sets(delegated_admin=False):
                     account_ids = []
                     paginator = ic_admin.get_paginator(
                         'list_accounts_for_provisioned_permission_set')
-                    for page in paginator.paginate(
+                    for page in execute_with_retry(
+                        paginator.paginate,
                         InstanceArn=ic_instance_arn,
                         PermissionSetArn=arn
                     ):
@@ -615,6 +625,7 @@ def track_creation_status(request_id):
                     f"Creation failed: {status.get('FailureReason', 'Unknown')}")
             break
         sleep(0.5)
+
 
 def drift_detect_update(all_assignments, expected_assignments, current_aws_permission_sets):
     """Efficient drift detection using set operations"""
