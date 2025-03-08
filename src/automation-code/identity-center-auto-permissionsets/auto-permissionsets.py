@@ -992,14 +992,14 @@ def sync_customer_policies(local_name, local_customer_policies, perm_set_arn):
 
     aws_policies = []
     paginator = ic_admin.get_paginator(
-        'list_managed_policies_in_permission_set')
+        'list_customer_managed_policy_references_in_permission_set')
 
     try:
         for page in paginator.paginate(
             InstanceArn=ic_instance_arn,
             PermissionSetArn=perm_set_arn
         ):
-            aws_policies.extend(page['AttachedManagedPolicies'])
+            aws_policies.extend(page['CustomerManagedPolicyReferences'])
     except Exception as e:
         logger.error(f"Error fetching managed policies for {local_name}: {e}")
         raise
