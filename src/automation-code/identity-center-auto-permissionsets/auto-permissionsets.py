@@ -196,12 +196,23 @@ def execute_with_retry(func, *args, **kwargs):
             return func(*args, **kwargs)
         except (ClientError, ic_admin.exceptions.ConflictException) as error:
             if attempt == max_attempts - 1 or not is_retryable_error(error):
+                if isinstance(error, ClientError):
+                    error_code = error.response['Error']['Code']
+                    error_message = error.response['Error']['Message']
+                    log_and_append_error(
+                        f"AWS Error in {func.__name__}: {error_code} - {error_message}"
+                    )
+                else:
+                    log_and_append_error(
+                        f"Conflict error in {func.__name__}: {str(error)}"
+                    )
                 raise
             base_delay = RETRY_BASE_DELAY * (2 ** attempt)
             sleep(base_delay + random.uniform(0, 1))
         except Exception as error:
             log_and_append_error(
-                f"Unexpected error in {func.__name__}: {str(error)}")
+                f"Unexpected error in {func.__name__}: {str(error)}"
+            )
             raise
 
 
@@ -954,7 +965,8 @@ def sync_managed_policies(local_name, local_managed_policies, perm_set_arn):
     logger.info(f'Syncing AWS Managed Policies for {local_name}')
 
     aws_policies = []
-    paginator = ic_admin.get_paginator('list_managed_policies_in_permission_set')
+    paginator = ic_admin.get_paginator(
+        'list_managed_policies_in_permission_set')
     for page in paginator.paginate(
         InstanceArn=ic_instance_arn,
         PermissionSetArn=perm_set_arn
