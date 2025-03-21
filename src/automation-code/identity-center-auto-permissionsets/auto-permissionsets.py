@@ -861,7 +861,7 @@ def add_managed_policy_to_perm_set(local_name, perm_set_arn, managed_policy_arn)
             f'Managed Policy {managed_policy_arn} added to {local_name} - {perm_set_arn}')
     except ic_admin.exceptions.ConflictException as error:
         logger.warning(
-            "%s.The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
+            "%s. The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
     except ClientError as error:
         error_message = f'Client error occurred: {error}'
         log_and_append_error(error_message)
