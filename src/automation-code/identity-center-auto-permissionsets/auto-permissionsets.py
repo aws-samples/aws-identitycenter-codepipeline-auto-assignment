@@ -196,12 +196,23 @@ def execute_with_retry(func, *args, **kwargs):
             return func(*args, **kwargs)
         except (ClientError, ic_admin.exceptions.ConflictException) as error:
             if attempt == max_attempts - 1 or not is_retryable_error(error):
+                if isinstance(error, ClientError):
+                    error_code = error.response['Error']['Code']
+                    error_message = error.response['Error']['Message']
+                    log_and_append_error(
+                        f"AWS Error in {func.__name__}: {error_code} - {error_message}"
+                    )
+                else:
+                    log_and_append_error(
+                        f"Conflict error in {func.__name__}: {str(error)}"
+                    )
                 raise
             base_delay = RETRY_BASE_DELAY * (2 ** attempt)
             sleep(base_delay + random.uniform(0, 1))
         except Exception as error:
             log_and_append_error(
-                f"Unexpected error in {func.__name__}: {str(error)}")
+                f"Unexpected error in {func.__name__}: {str(error)}"
+            )
             raise
 
 
@@ -255,11 +266,10 @@ def process_permission_set(local_perm_set, aws_permission_sets):
         with ThreadPoolExecutor(max_workers=len(components)) as executor:
             futures = []
             for key, func in components:
-                if key in local_perm_set:
-                    futures.append(executor.submit(
-                        execute_with_retry, func, perm_set_name,
-                        local_perm_set[key], perm_set_arn
-                    ))
+                futures.append(executor.submit(
+                    execute_with_retry, func, perm_set_name,
+                    local_perm_set.get(key, []), perm_set_arn
+                ))
             futures.append(executor.submit(
                 execute_with_retry, sync_description, perm_set_name, perm_set_arn,
                 local_description, aws_description
@@ -326,7 +336,10 @@ def is_provisioned_or_outdated(perm_set_name, perm_set_arn, account):
         provisioned = []
         paginator = ic_admin.get_paginator(
             'list_permission_sets_provisioned_to_account')
-        for page in paginator.paginate(InstanceArn=ic_instance_arn, AccountId=account):
+        for page in paginator.paginate(
+            InstanceArn=ic_instance_arn,
+            AccountId=account
+        ):
             provisioned.extend(page.get('PermissionSets', []))
 
         if provisioned:
@@ -334,11 +347,13 @@ def is_provisioned_or_outdated(perm_set_name, perm_set_arn, account):
                 return (perm_set_name, perm_set_arn, account, 'never_provisioned')
 
         # Check outdated
-        outdated = ic_admin.list_permission_sets_provisioned_to_account(
+        outdated = []
+        for page in paginator.paginate(
             InstanceArn=ic_instance_arn,
             AccountId=account,
             ProvisioningStatus='LATEST_PERMISSION_SET_NOT_PROVISIONED'
-        ).get('PermissionSets', [])
+        ):
+            outdated.extend(page.get('PermissionSets', []))
 
         if perm_set_arn in outdated:
             return (perm_set_name, perm_set_arn, account, 'outdated')
@@ -543,8 +558,11 @@ def deprovision_account(perm_set_arn, perm_set_name, account):
             return True, perm_set_name, perm_set_arn
         assignments = []
         paginator = ic_admin.get_paginator('list_account_assignments')
-        for page in paginator.paginate(InstanceArn=ic_instance_arn, AccountId=account, PermissionSetArn=perm_set_arn
-                                       )['AccountAssignments']:
+        for page in paginator.paginate(
+            InstanceArn=ic_instance_arn,
+            AccountId=account,
+            PermissionSetArn=perm_set_arn
+        ):
             assignments.extend(page.get('AccountAssignments', []))
 
         for assignment in assignments:
@@ -693,7 +711,9 @@ def get_all_permission_sets(delegated_admin=False):
         # List all permission set ARNs
         paginator = ic_admin.get_paginator('list_permission_sets')
         all_arns = []
-        for page in paginator.paginate(InstanceArn=ic_instance_arn):
+        for page in paginator.paginate(
+            InstanceArn=ic_instance_arn
+        ):
             all_arns.extend(page['PermissionSets'])
 
         # Parallel processing of permission sets
@@ -709,11 +729,14 @@ def get_all_permission_sets(delegated_admin=False):
                 name = ps['Name']
 
                 # Check Control Tower management
-                tags = execute_with_retry(
-                    ic_admin.list_tags_for_resource,
+                tags = []
+                paginator = ic_admin.get_paginator('list_tags_for_resource')
+                for page in execute_with_retry(
+                    paginator.paginate,
                     InstanceArn=ic_instance_arn,
                     ResourceArn=arn
-                )['Tags']
+                ):
+                    tags.extend(page['Tags'])
                 if any(t['Key'] == 'managedBy' and t['Value'] == 'ControlTower' for t in tags):
                     skipped.add((name, arn, "Control Tower"))
                     return None
@@ -723,7 +746,8 @@ def get_all_permission_sets(delegated_admin=False):
                     account_ids = []
                     paginator = ic_admin.get_paginator(
                         'list_accounts_for_provisioned_permission_set')
-                    for page in paginator.paginate(
+                    for page in execute_with_retry(
+                        paginator.paginate,
                         InstanceArn=ic_instance_arn,
                         PermissionSetArn=arn
                     ):
@@ -782,7 +806,8 @@ def get_provisioned_accounts(perm_set_arn):
     try:
         paginator = ic_admin.get_paginator(
             'list_accounts_for_provisioned_permission_set')
-        for page in paginator.paginate(
+        for page in execute_with_retry(
+            paginator.paginate,
             InstanceArn=ic_instance_arn,
             PermissionSetArn=perm_set_arn
         ):
@@ -844,10 +869,10 @@ def add_managed_policy_to_perm_set(local_name, perm_set_arn, managed_policy_arn)
             ManagedPolicyArn=managed_policy_arn
         )
         logger.info(
-            f'Managed Policy  {managed_policy_arn} to {local_name} - {perm_set_arn}')
+            f'Managed Policy {managed_policy_arn} added to {local_name} - {perm_set_arn}')
     except ic_admin.exceptions.ConflictException as error:
         logger.warning(
-            "%s.The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
+            "%s. The same IAM Identity Center process may have been started in another invocation, or check for potential conflicts; skipping...", error)
     except ClientError as error:
         error_message = f'Client error occurred: {error}'
         log_and_append_error(error_message)
@@ -939,11 +964,14 @@ def sync_managed_policies(local_name, local_managed_policies, perm_set_arn):
     """Synchronize Managed Policies using set operations."""
     logger.info(f'Syncing AWS Managed Policies for {local_name}')
 
-    aws_policies = execute_with_retry(
-        ic_admin.list_managed_policies_in_permission_set,
+    aws_policies = []
+    paginator = ic_admin.get_paginator(
+        'list_managed_policies_in_permission_set')
+    for page in paginator.paginate(
         InstanceArn=ic_instance_arn,
         PermissionSetArn=perm_set_arn
-    )['AttachedManagedPolicies']
+    ):
+        aws_policies.extend(page['AttachedManagedPolicies'])
     aws_policy_map = {p['Name']: p['Arn'] for p in aws_policies}
     aws_names = set(aws_policy_map.keys())
 
@@ -974,11 +1002,19 @@ def sync_customer_policies(local_name, local_customer_policies, perm_set_arn):
     """Sync customer-managed policies using set operations."""
     logger.info(f'Syncing Customer Policies for {local_name}')
 
-    aws_policies = execute_with_retry(
-        ic_admin.list_customer_managed_policy_references_in_permission_set,
-        InstanceArn=ic_instance_arn,
-        PermissionSetArn=perm_set_arn
-    )['CustomerManagedPolicyReferences']
+    aws_policies = []
+    paginator = ic_admin.get_paginator(
+        'list_customer_managed_policy_references_in_permission_set')
+
+    try:
+        for page in paginator.paginate(
+            InstanceArn=ic_instance_arn,
+            PermissionSetArn=perm_set_arn
+        ):
+            aws_policies.extend(page['CustomerManagedPolicyReferences'])
+    except Exception as e:
+        logger.error(f"Error fetching managed policies for {local_name}: {e}")
+        raise
     aws_policy_set = {(p['Name'], p['Path']) for p in aws_policies}
 
     local_policy_set = {(p['Name'], p['Path'])
@@ -1253,11 +1289,18 @@ def sync_tags(local_name, local_tags, perm_set_arn):
     logger.info(f'Syncing tags for {local_name}')
 
     # Fetch current tags
-    aws_tags = execute_with_retry(
-        ic_admin.list_tags_for_resource,
-        InstanceArn=ic_instance_arn,
-        ResourceArn=perm_set_arn
-    )['Tags']
+    aws_tags = []
+    paginator = ic_admin.get_paginator('list_tags_for_resource')
+
+    try:
+        for page in paginator.paginate(
+            InstanceArn=ic_instance_arn,
+            ResourceArn=perm_set_arn
+        ):
+            aws_tags.extend(page['Tags'])
+    except Exception as e:
+        logger.error(f"Error fetching tags for {local_name}: {e}")
+        raise
     aws_tag_set = {(t['Key'], t['Value']) for t in aws_tags}
     local_tag_set = {(t['Key'], t['Value']) for t in local_tags}
 
@@ -1295,37 +1338,6 @@ def is_account_active(account_id):
         logger.warning(
             f"Error checking account status for {account_id}: {error}")
         return False
-
-
-def start_automation():
-    logger.debug(f"Delegated: {delegated}")
-    delegated_admin = delegated == 'true'
-    try:
-        logger.info("The automation process is now started.")
-
-        logger.info("Starting the automation process...")
-        aws_permission_sets = get_all_permission_sets(delegated_admin)
-
-        if skipped_perm_set:
-            try:
-                sync_table_for_skipped_perm_sets(skipped_perm_set)
-            except Exception as error:
-                error_message = f'Failed to invoke sync_table_for_skipped_perm_sets: {error}'
-                log_and_append_error(error_message)
-        local_files = get_all_json_files(ic_bucket_name)
-
-        # Process sync
-        sync_json_with_aws(local_files, aws_permission_sets)
-
-        logger.info("Execution completed! \
-                    Check the auto permission set function logs for further execution details.")
-        logger.info(f'Codebuild logs contain combined logs for the build project.\
-                If you wish to view the logs for just the auto-permissionSet function, you can check out CloudWatch logs: "{permission_set_automation_log_group}/[buildId]-{build_id}"\
-                    https://{runtime_region}.console.aws.amazon.com/cloudwatch/home?region={runtime_region}#logsV2:log-groups/log-group/{permission_set_automation_log_group}/log-events/[buildId]-{build_id}')
-
-    except Exception as error:
-        error_message = f'Exception occurred: {error}'
-        log_and_append_error(error_message)
 
 
 # @profile(stdout=False, filename='profile_permission_sets.prof')

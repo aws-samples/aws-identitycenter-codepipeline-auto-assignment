@@ -133,8 +133,13 @@ def validate_inline_policy_statement(statement: dict) -> tuple[bool, str]:
 
     # Validate Sid if present
     if "Sid" in statement:
-        if not re.match(r'^[\w+=,.@-]+$', statement["Sid"]):
-            return False, "Sid must contain only alphanumeric characters and [+=,.@-]"
+        sid = statement["Sid"]
+        if not isinstance(sid, str):
+            return False, "Sid must be a string"
+        
+        sid_pattern = r'^[a-zA-Z0-9]+$'
+        if not re.match(sid_pattern, sid):
+            return False, "Sid must only contain alphanumeric characters [a-z, A-Z, 0-9]"
 
     return True, ""
 

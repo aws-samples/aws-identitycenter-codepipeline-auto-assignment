@@ -242,3 +242,21 @@ None. This is a non-breaking change focused on internal optimizations.
 
 - Compatibility
 Compatible with existing deployment structures and configuration files (pre-v3.0.0) and the new configuration file structure (v3.0.0 onwards).
+
+## 3.1.1
+
+### Bug Fixes & Improvements
+
+- Fixed global mapping target check to include 'TargetAccountid' field fallback
+- Updated Sid validation in inline policy statements:
+  - Added type checking for Sid values
+  - Restricted Sid pattern to alphanumeric characters only [a-z, A-Z, 0-9]
+- Added proper pagination for outdated permission sets check
+- Fixed log message formatting for managed policy operations
+- Removed deprecated start_automation function
+- Enhanced empty permission set component handling using .get() with default values
+
+### Notes
+
+- Non-breaking changes focused on validation and bug fixes
+- Compatible with existing deployment structures
