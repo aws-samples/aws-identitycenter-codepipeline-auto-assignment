@@ -505,7 +505,7 @@ def generate_expected_assignments(global_mappings, target_mappings, current_aws_
 
     # Process global mappings
     for mapping in global_mappings:
-        if str(mapping.get('Target', '')).upper() != "GLOBAL":
+        if str(mapping.get('Target', mapping.get('TargetAccountid', ''))).upper() != "GLOBAL":
             continue
         group_id = get_valid_group_id(mapping['GlobalGroupName'])
         if not group_id:
