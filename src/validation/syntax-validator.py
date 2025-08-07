@@ -45,6 +45,7 @@ def is_valid_iam_role_arn(arn: str) -> bool:
     pattern = (
         r'^arn:aws:iam::\d{12}:role/'
         r'(?:aws-service-role/[a-z0-9.-]+\.amazonaws\.com/)?'
+        r'aws-reserved/sso\.amazonaws\.com/[a-zA-Z0-9_+=,.@-]+/)?'
         r'[a-zA-Z0-9+=,.@_-]{1,64}$'
     )
 
