@@ -38,6 +38,7 @@ def is_valid_iam_role_arn(arn: str) -> bool:
     """
     Validate AWS IAM Role ARN format.
     Role name must be 1-64 characters using alphanumeric and '+=,.@-_' characters.
+    Supports AWS service-linked roles and Identity Center (SSO) reserved roles.
     """
     if not arn:
         return False
@@ -45,8 +46,8 @@ def is_valid_iam_role_arn(arn: str) -> bool:
     pattern = (
         r'^arn:aws:iam::\d{12}:role/'
         r'(?:aws-service-role/[a-z0-9.-]+\.amazonaws\.com/|'
-        r'aws-reserved/sso\.amazonaws\.com/[a-zA-Z0-9_+=,.@-]+/)?'
-        r'[a-zA-Z0-9+=,.@_-]{1,2048}$'
+        r'aws-reserved/sso\.amazonaws\.com/[a-z0-9-]+/)?'
+        r'[a-zA-Z0-9+=,.@_-]{1,64}(?:/[a-zA-Z0-9+=,.@_-]{1,64})*$'
     )
 
     return bool(re.match(pattern, arn))
