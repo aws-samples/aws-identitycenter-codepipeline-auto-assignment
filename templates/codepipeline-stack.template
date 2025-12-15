@@ -1,6 +1,6 @@
 ---
 AWSTemplateFormatVersion: 2010-09-09
-Description: "This template creates AWS CodePipeline and other CICD resources for Identity Center automation solution (qs-1t52at7re)"
+Description: "This template creates AWS CodePipeline and other CICD resources for Identity Center automation solution (uksb-8ggfy7rjoj)."
 
 Conditions:
   IsCodeConnectionSource: !Equals [!Ref SourceType, 'CodeConnection']

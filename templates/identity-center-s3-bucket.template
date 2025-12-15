@@ -3,7 +3,7 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: >-
   Cloudformation template creating S3 and KMS resources for IAM Identity Center automation
   solution. The s3 bucket stores IAM Identity Center permission sets and
-  assignment mapping files and source code zip files (qs-1t52at7re).
+  assignment mapping files and source code zip files (uksb-8ggfy7rjoj).
 Parameters:
   ICMappingBucketName:
     Type: String
