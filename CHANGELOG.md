@@ -260,3 +260,17 @@ Compatible with existing deployment structures and configuration files (pre-v3.0
 
 - Non-breaking changes focused on validation and bug fixes
 - Compatible with existing deployment structures
+
+## 3.1.2
+
+### Bug Fixes & Improvements
+
+- **IAM Role ARN Validation**: Improved syntax validator to support AWS Identity Center (SSO) reserved role paths (`aws-reserved/sso.amazonaws.com/`)
+- **Service-Linked Role Support**: Enhanced validation for AWS service-linked roles with proper path handling
+- **Role Name Length Validation**: Refined role name length validation to support nested role paths
+- **CloudFormation Templates**: Updated all template descriptions with current solution identifier (`uksb-8ggfy7rjoj`)
+
+### Notes
+
+- Non-breaking changes focused on validation and bug fixes
+- Compatible with existing deployment structures
