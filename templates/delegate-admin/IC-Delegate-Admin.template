@@ -4,7 +4,7 @@ Parameters:
     Default: "123456789012"
     AllowedPattern: '^[0-9]{12}$'
     Description: >-
-      Enter the AWS Account ID of the account that you'd like to delegate as administrator for Identity Center
+      Enter the AWS Account ID of the account that you'd like to delegate as administrator for Identity Center (uksb-8ggfy7rjoj).
   delegate:
     Type: String
     Default: "true"

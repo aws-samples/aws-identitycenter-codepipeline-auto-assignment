@@ -1,9 +1,9 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Template to forward Organization events from management account to Identity Center delegated admin account"
+Description: "Template to forward Organization events from management account to Identity Center delegated admin account (uksb-8ggfy7rjoj)."
 Parameters:
   IdcDelegatedAccountId:
     Type: String
-    Description: The account ID of the delegated admin account for IAM Identity Center where events should be forwarded
+    Description: The account ID of the delegated admin account for IAM Identity Center where events should be forwarded (uksb-8ggfy7rjoj).
   TargetRegion:
     Type: String
     Description: The region where the Identity Center solution is deployed in the delegated admin account
