@@ -704,9 +704,9 @@ def process_drift_cleanup(delta_assignment, perm_set_name, progress_counter):
                     log_and_append_error(
                         f"Deletion failed: {status.get('FailureReason', 'Unknown')}")
                 break
+            sleep(0.5)
         if progress_counter:
             progress_counter()
-            sleep(0.5)
     except Exception as error:
         log_and_append_error(f"Drift cleanup failed: {str(error)}")
 
