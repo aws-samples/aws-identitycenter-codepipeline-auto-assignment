@@ -994,6 +994,14 @@ Resources:
       MemorySize: 128
       Timeout: 120
 
+  ICAlertSNSNotificationLambdaInvokePermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName: !Ref ICAlertSNSNotificationLambda
+      Action: "lambda:InvokeFunction"
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ICManualActionDetectionRule1.Arn
+
   ICAlertSNSNotificationRole:
     Type: "AWS::IAM::Role"
     Properties:
