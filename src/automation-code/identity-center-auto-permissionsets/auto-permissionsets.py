@@ -1301,13 +1301,14 @@ def sync_tags(local_name, local_tags, perm_set_arn):
     except Exception as e:
         logger.error(f"Error fetching tags for {local_name}: {e}")
         raise
-    aws_tag_set = {(t['Key'], t['Value']) for t in aws_tags}
-    local_tag_set = {(t['Key'], t['Value']) for t in local_tags}
+    aws_tag_map = {t['Key']: t['Value'] for t in aws_tags}
+    local_tag_map = {t['Key']: t['Value'] for t in local_tags}
 
-    # Tags to add/remove
+    # Tags to add/update (tag_resource overwrites existing values) and
+    # keys to remove (only keys no longer present locally)
     tags_to_add = [{'Key': k, 'Value': v}
-                   for (k, v) in (local_tag_set - aws_tag_set)]
-    tags_to_remove = [k for (k, _) in (aws_tag_set - local_tag_set)]
+                   for k, v in local_tag_map.items() if aws_tag_map.get(k) != v]
+    tags_to_remove = [k for k in aws_tag_map if k not in local_tag_map]
 
     # Apply changes
     if tags_to_add:
