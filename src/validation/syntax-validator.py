@@ -30,7 +30,7 @@ def is_valid_arn(arn: str) -> bool:
     """Validate AWS IAM policy ARN format"""
     if not arn:
         return False
-    pattern = r'^arn:aws:iam::(?:\d{12}|aws):policy/(?:job-function/|service-role/)?[a-zA-Z0-9+=,.@-_/]+$'
+    pattern = r'^arn:aws:iam::(?:\d{12}|aws):policy/(?:job-function/|service-role/)?[a-zA-Z0-9+=,.@_/-]+$'
     return bool(re.match(pattern, arn))
 
 
@@ -601,6 +601,20 @@ def validate_permission_set_references(permission_sets: list[str], errors: list)
             log_and_append_error("Empty permission set name found", errors)
 
 
+def validate_mapping_permission_set_references(mapping_content, mapping_file: str, permission_set_names: set[str], errors: list) -> None:
+    """Validate that every PermissionSetName in a mapping file matches a permission set file."""
+    if not isinstance(mapping_content, list):
+        return
+    for idx, item in enumerate(mapping_content):
+        if not isinstance(item, dict) or not isinstance(item.get('PermissionSetName'), list):
+            continue
+        group_name = item.get('GlobalGroupName') or item.get('TargetGroupName')
+        for ps_name in item['PermissionSetName']:
+            if isinstance(ps_name, str) and ps_name.strip() and ps_name not in permission_set_names:
+                log_and_append_error(
+                    f"Permission set '{ps_name}' for group '{group_name}' at index {idx} in {mapping_file} does not match any permission set file", errors)
+
+
 def validate_mapping_file_structure(permission_set_file, group_type, errors):
     logger.info(
         f"Validating mapping file structure for {group_type} in {permission_set_file}")
@@ -841,6 +855,8 @@ def validate_all_files():
     """
     logger.info("Validating all files")
     errors = []
+    permission_set_names = set()
+    mapping_contents = {}
     try:
         base_path = 'identity-center-mapping-info'
         param_file = 'identity-center-stacks-parameters.json'
@@ -873,6 +889,8 @@ def validate_all_files():
                             try:
                                 permission_set = json.load(file)
                                 if 'Name' in permission_set:
+                                    permission_set_names.add(
+                                        permission_set['Name'])
                                     if not validate_file_name_matches_content(filename, permission_set['Name']):
                                         log_and_append_error(
                                             f"File name '{filename}' does not match permission set Name '{permission_set['Name']}'", errors)
@@ -897,6 +915,7 @@ def validate_all_files():
             with open(global_mapping_path, 'r') as file:
                 try:
                     global_content = json.load(file)
+                    mapping_contents['global-mapping.json'] = global_content
                     validate_mapping_file_structure(
                         global_content, 'global', errors)
                     logger.info("Completed validation of global mapping file")
@@ -914,6 +933,7 @@ def validate_all_files():
             with open(target_mapping_path, 'r') as file:
                 try:
                     target_content = json.load(file)
+                    mapping_contents['target-mapping.json'] = target_content
                     validate_mapping_file_structure(
                         target_content, 'target', errors)
                     logger.info("Completed validation of target mapping file")
@@ -930,6 +950,12 @@ def validate_all_files():
             for error in duplicate_ps_errors:
                 log_and_append_error(error, errors)
 
+        # Mapping files must only reference permission sets defined in permission-sets/
+        logger.info("Checking mapping file permission set references")
+        for mapping_file, mapping_content in mapping_contents.items():
+            validate_mapping_permission_set_references(
+                mapping_content, mapping_file, permission_set_names, errors)
+
         if errors:
             error_message = "\n".join(errors)
             logger.info(
@@ -942,7 +968,7 @@ def validate_all_files():
     except Exception as error:
         error_message = f'Exception caught: {error}'
         logger.error(error_message)
-        log_and_append_error(error_message)
+        log_and_append_error(error_message, errors)
         if errors:
             logger.error(f'Errors during execution: {errors}')
         sys.exit(1)  # Signal failure to CodeBuild
