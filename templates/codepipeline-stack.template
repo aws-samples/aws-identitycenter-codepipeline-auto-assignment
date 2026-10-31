@@ -6,6 +6,7 @@ Conditions:
   IsCodeConnectionSource: !Equals [!Ref SourceType, 'CodeConnection']
   IsCodeCommitSource: !Equals [!Ref SourceType, 'CodeCommit']
   CreateMappingGeneratorProject: !Equals [!Ref GeneratePermissionSetsAndMappings, 'true']
+  SendPipelineExecutionNotification: !Equals [!Ref PipelineExecutionNotification, 'true']
 Parameters:
   GeneratePermissionSetsAndMappings:
     Type: String
@@ -49,6 +50,13 @@ Parameters:
   SNSPipelineApprovalEmail:
     Description: The email that will receive and approve pipeline approval notifications.
     Type: String
+  PipelineExecutionNotification:
+    Description: Set to true to also email SNSPipelineApprovalEmail when a pipeline execution succeeds, fails or is stopped.
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
   ICMappingBucketName:
     Type: String
     Description: >-
@@ -349,6 +357,63 @@ Resources:
             Principal:
               AWS:
                 - !GetAtt CodePipelineServiceRole.Arn
+
+  PipelineExecutionNotificationRule:
+    Type: AWS::Events::Rule
+    Condition: SendPipelineExecutionNotification
+    Properties:
+      Description: "Send an email notification when an Identity Center automation pipeline execution succeeds, fails or is stopped"
+      EventPattern:
+        source:
+          - aws.codepipeline
+        detail-type:
+          - "CodePipeline Pipeline Execution State Change"
+        detail:
+          pipeline:
+            - !Ref AWSCodePipeline
+          state:
+            - SUCCEEDED
+            - FAILED
+            - STOPPED
+      State: ENABLED
+      Targets:
+        - Arn: !Ref SNSPipelineApprovalTopic
+          Id: "PipelineExecutionNotification"
+          RoleArn: !GetAtt PipelineExecutionNotificationRole.Arn
+          InputTransformer:
+            InputPathsMap:
+              pipeline: "$.detail.pipeline"
+              executionId: "$.detail.execution-id"
+              state: "$.detail.state"
+              time: "$.time"
+              region: "$.region"
+            InputTemplate: |
+              "Pipeline <pipeline> execution <executionId> finished with state <state> at <time>."
+              "View the execution: https://<region>.console.aws.amazon.com/codesuite/codepipeline/pipelines/<pipeline>/executions/<executionId>/timeline?region=<region>"
+
+  PipelineExecutionNotificationRole:
+    Type: AWS::IAM::Role
+    Condition: SendPipelineExecutionNotification
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                'aws:SourceAccount': !Ref AWS::AccountId
+      Policies:
+        - PolicyName: PublishPipelineExecutionNotification
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref SNSPipelineApprovalTopic
 
   AWSCodePipeline:
     Type: 'AWS::CodePipeline::Pipeline'
