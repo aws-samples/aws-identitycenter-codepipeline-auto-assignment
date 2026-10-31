@@ -29,7 +29,7 @@
    {
       "TargetGroupName":"Example_Group_1",
       "PermissionSetName":[
-         "6-example-cx-managed-policy-boundary"
+         "6-example-cx-managed-boundary"
       ],
       "Target": [
             {
@@ -48,7 +48,7 @@
    {
       "TargetGroupName":"Example_Group_2",
       "PermissionSetName":[
-         "7-example-aws-managed-policy-boundary"
+         "7-example-aws-managed-boundary"
       ],
       "Target":[
          "384142793104"
